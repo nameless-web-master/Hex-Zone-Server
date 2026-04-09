@@ -1,0 +1,53 @@
+@echo off
+REM Quick Start Script for Zone Weaver Backend (Windows)
+
+echo.
+echo 🚀 Zone Weaver Backend - Quick Start (Windows)
+echo =============================================
+echo.
+
+REM Check if Docker is installed
+docker --version >nul 2>&1
+if errorlevel 1 (
+    echo ❌ Docker is not installed. Please install Docker and try again.
+    exit /b 1
+)
+
+echo 📦 Building and starting services with Docker Compose...
+docker-compose up -d
+
+echo.
+echo ⏳ Waiting for PostgreSQL to be ready (30 seconds)...
+timeout /t 30 /nobreak
+
+echo.
+echo ✅ Services are running!
+echo.
+echo 📊 Service Status:
+docker-compose ps
+
+echo.
+echo 📍 Access Points:
+echo   API:      http://localhost:8000
+echo   Swagger:  http://localhost:8000/docs
+echo   ReDoc:    http://localhost:8000/redoc
+echo   Database: localhost:5432
+echo.
+
+echo 🔑 Creating first admin user...
+curl -X POST http://localhost:8000/owners/register ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\": \"admin@example.com\", \"first_name\": \"Admin\", \"last_name\": \"User\", \"account_type\": \"exclusive\", \"password\": \"AdminPassword123\"}"
+
+echo.
+echo ✨ Backend is ready!
+echo.
+echo 📚 Next Steps:
+echo   1. Visit http://localhost:8000/docs to explore API
+echo   2. Login with: admin@example.com / AdminPassword123
+echo   3. Create zones and devices
+echo.
+echo 🛑 To stop services: docker-compose down
+echo 🗑️  To clean up volumes: docker-compose down -v
+echo.
+pause

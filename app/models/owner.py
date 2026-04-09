@@ -1,0 +1,44 @@
+"""Owner/User model."""
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Index
+from sqlalchemy.orm import relationship
+from datetime import datetime
+import enum
+from app.database import Base
+
+
+class AccountType(str, enum.Enum):
+    """Account type enumeration."""
+    PRIVATE = "private"
+    EXCLUSIVE = "exclusive"
+
+
+class Owner(Base):
+    """Owner/User model."""
+    __tablename__ = "owners"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    account_type = Column(Enum(AccountType), nullable=False, default=AccountType.PRIVATE)
+    hashed_password = Column(String(255), nullable=False)
+    api_key = Column(String(255), unique=True, nullable=False, index=True)
+    phone = Column(String(20), nullable=True)
+    address = Column(String(255), nullable=False)
+    active = Column(Boolean, default=True, nullable=False)
+    expired = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    devices = relationship("Device", back_populates="owner", cascade="all, delete-orphan")
+    zones = relationship("Zone", back_populates="owner", cascade="all, delete-orphan")
+    qr_registrations = relationship("QRRegistration", back_populates="owner", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_owner_email", "email"),
+        Index("ix_owner_api_key", "api_key"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Owner(id={self.id}, email={self.email}, account_type={self.account_type})>"
