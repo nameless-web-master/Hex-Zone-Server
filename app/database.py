@@ -11,11 +11,6 @@ from app.core.config import settings
 _db_url = settings.DATABASE_URL
 if _db_url.startswith("postgresql://"):
     _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-# Ensure SSL is enabled for Render PostgreSQL
-if "?" not in _db_url:
-    _db_url += "?sslmode=require"
-else:
-    _db_url += "&sslmode=require"
 
 # Create async engine
 engine = create_async_engine(
@@ -23,7 +18,7 @@ engine = create_async_engine(
     echo=False,
     future=True,
     pool_pre_ping=True,
-    connect_args={"timeout": 30},  # Connection timeout in seconds
+    connect_args={"timeout": 30, "ssl": True},  # Connection timeout and SSL
 )
 
 # Create session factory
