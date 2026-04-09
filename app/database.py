@@ -8,6 +8,8 @@ from app.core.config import settings
 # scheme (which defaults to the sync psycopg2 driver) with
 # `postgresql+asyncpg://` so SQLAlchemy selects the async driver.
 _db_url = settings.DATABASE_URL
+if _db_url.startswith("postgresql://"):
+    _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Create async engine
 engine = create_async_engine(
