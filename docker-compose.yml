@@ -25,7 +25,7 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://zoneweaver:zoneweaver_pass@postgres:5432/zoneweaver
+      DATABASE_URL: ${{Postgres.DATABASE_URL}}
       SECRET_KEY: your-change-me-secret-key-minimum-32-characters-long
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
