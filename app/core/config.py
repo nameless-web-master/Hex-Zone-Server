@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/zoneweaver"
+    DATABASE_URL: str
 
     # JWT
     SECRET_KEY: str = "your-secret-key-change-in-production-minimum-32-chars-required"
