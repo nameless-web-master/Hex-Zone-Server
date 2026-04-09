@@ -1,7 +1,4 @@
 """Database connection and session management."""
-import asyncio
-import ssl
-from urllib.parse import urlparse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
@@ -11,20 +8,6 @@ from app.core.config import settings
 # scheme (which defaults to the sync psycopg2 driver) with
 # `postgresql+asyncpg://` so SQLAlchemy selects the async driver.
 _db_url = settings.DATABASE_URL
-if _db_url.startswith("postgres://"):
-    _db_url = _db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-elif _db_url.startswith("postgresql://"):
-    _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-# Use SSL context for remote Postgres connections.
-ssl_ctx = None
-parsed = urlparse(_db_url)
-if parsed.hostname and parsed.hostname.endswith("render.com"):
-    ssl_ctx = ssl.create_default_context()
-
-connect_args = {"timeout": 60}
-if ssl_ctx is not None:
-    connect_args["ssl"] = ssl_ctx
 
 # Create async engine
 engine = create_async_engine(
@@ -32,7 +15,6 @@ engine = create_async_engine(
     echo=False,
     future=True,
     pool_pre_ping=True,
-    connect_args=connect_args,
 )
 
 # Create session factory
@@ -58,22 +40,9 @@ async def get_db() -> AsyncSession:
 
 async def init_db():
     """Initialize database tables."""
-    max_retries = 5
-    for attempt in range(max_retries):
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
-                await conn.run_sync(Base.metadata.create_all)
-            print("Database initialized successfully")
-            return
-        except Exception as e:
-            if attempt < max_retries - 1:
-                wait_time = 2 ** attempt  # Exponential backoff
-                print(f"Database connection failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {wait_time} seconds...")
-                await asyncio.sleep(wait_time)
-            else:
-                print(f"Database initialization failed after {max_retries} attempts: {e}")
-                raise
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
+        await conn.run_sync(Base.metadata.create_all)
 
 
 async def drop_db():
