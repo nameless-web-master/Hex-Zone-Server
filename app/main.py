@@ -1,9 +1,11 @@
 """Main FastAPI application."""
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
-from app.database import init_db
+from app.database import get_db, init_db
 from app.routers import owners, devices, zones, utils
 
 # Lifespan context

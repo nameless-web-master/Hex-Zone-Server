@@ -1,5 +1,7 @@
 """Database connection and session management."""
 import asyncio
+import ssl
+from urllib.parse import urlparse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
@@ -9,8 +11,20 @@ from app.core.config import settings
 # scheme (which defaults to the sync psycopg2 driver) with
 # `postgresql+asyncpg://` so SQLAlchemy selects the async driver.
 _db_url = settings.DATABASE_URL
-if _db_url.startswith("postgresql://"):
+if _db_url.startswith("postgres://"):
+    _db_url = _db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif _db_url.startswith("postgresql://"):
     _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+# Use SSL context for remote Postgres connections.
+ssl_ctx = None
+parsed = urlparse(_db_url)
+if parsed.hostname and parsed.hostname.endswith("render.com"):
+    ssl_ctx = ssl.create_default_context()
+
+connect_args = {"timeout": 60}
+if ssl_ctx is not None:
+    connect_args["ssl"] = ssl_ctx
 
 # Create async engine
 engine = create_async_engine(
@@ -18,7 +32,7 @@ engine = create_async_engine(
     echo=False,
     future=True,
     pool_pre_ping=True,
-    connect_args={"timeout": 30, "ssl": True},  # Connection timeout and SSL
+    connect_args=connect_args,
 )
 
 # Create session factory
