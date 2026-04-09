@@ -3,9 +3,9 @@ services:
   postgres:
     image: postgis/postgis:16-3.5
     environment:
-      POSTGRES_USER: zoneweaver
-      POSTGRES_PASSWORD: zoneweaver_pass
-      POSTGRES_DB: zoneweaver
+      POSTGRES_USER: zoneweaver_db_user
+      POSTGRES_PASSWORD: 4luIlrk4UWwCVLUe0pUHGgRkou1eqh4e
+      POSTGRES_DB: zoneweaver_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init_db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -25,7 +25,7 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://postgres:NJptCdSyqVTEfxlwhUNihapUusGrYFGQ@postgres.railway.internal:5432/railway
+      DATABASE_URL: postgresql://zoneweaver_db_user:4luIlrk4UWwCVLUe0pUHGgRkou1eqh4e@dpg-d7bqs0buibrs739tpcdg-a.oregon-postgres.render.com/zoneweaver_db
       SECRET_KEY: your-change-me-secret-key-minimum-32-characters-long
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
