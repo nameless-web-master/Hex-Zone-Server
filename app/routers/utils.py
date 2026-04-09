@@ -1,6 +1,6 @@
 """Router for utility endpoints."""
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.schemas import (
     H3ConversionRequest,
@@ -45,10 +45,10 @@ async def convert_to_h3(
 async def generate_qr_registration(
     qr_request: QRRegistrationCreate,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Generate QR registration token for inviting users (Private accounts only)."""
-    owner = await owner_crud.get_owner(db, current_user["user_id"])
+    owner = owner_crud.get_owner(db, current_user["user_id"])
     if not owner:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -62,12 +62,12 @@ async def generate_qr_registration(
             detail="Only Private accounts can generate QR registration codes",
         )
     
-    qr = await qr_crud.create_qr_registration(
+    qr = qr_crud.create_qr_registration(
         db,
         current_user["user_id"],
         qr_request.expires_in_hours,
     )
-    await db.commit()
+    db.commit()
     
     return QRRegistrationResponse.model_validate(qr)
 
@@ -75,11 +75,11 @@ async def generate_qr_registration(
 @router.post("/qr/join", response_model=OwnerResponse)
 async def join_with_qr(
     qr_data: QRRegistrationUse,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Join a Private account using QR registration token."""
     # Find QR registration by token
-    qr = await qr_crud.get_qr_registration(db, qr_data.token)
+    qr = qr_crud.get_qr_registration(db, qr_data.token)
     if not qr:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -101,7 +101,7 @@ async def join_with_qr(
         )
     
     # Ensure this token belongs to a private account owner
-    owner = await owner_crud.get_owner(db, qr.owner_id)
+    owner = owner_crud.get_owner(db, qr.owner_id)
     if not owner or owner.account_type.value != "private":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -109,7 +109,7 @@ async def join_with_qr(
         )
     
     # Check if email already exists
-    existing = await owner_crud.get_owner_by_email(db, qr_data.email)
+    existing = owner_crud.get_owner_by_email(db, qr_data.email)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -128,10 +128,10 @@ async def join_with_qr(
         phone=qr_data.phone,
     )
     
-    new_owner = await owner_crud.create_owner(db, new_owner_data)
+    new_owner = owner_crud.create_owner(db, new_owner_data)
     
     # Mark QR as used
-    await qr_crud.mark_qr_registration_used(db, qr.token)
-    await db.commit()
+    qr_crud.mark_qr_registration_used(db, qr.token)
+    db.commit()
     
     return OwnerResponse.model_validate(new_owner)

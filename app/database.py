@@ -1,16 +1,12 @@
 """Database connection and session management."""
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from app.core.config import settings
 
-# Ensure the URL uses the asyncpg driver — replace the plain `postgresql://`
-# scheme (which defaults to the sync psycopg2 driver) with
-# `postgresql+asyncpg://` so SQLAlchemy selects the async driver.
 _db_url = settings.DATABASE_URL
 
-# Create async engine
-engine = create_async_engine(
+# Create sync engine
+engine = create_engine(
     _db_url,
     echo=False,
     future=True,
@@ -18,34 +14,32 @@ engine = create_async_engine(
 )
 
 # Create session factory
-async_session_maker = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
+session_maker = sessionmaker(
+    autocommit=False,
     autoflush=False,
+    bind=engine,
 )
 
 # Base class for models
 Base = declarative_base()
 
 
-async def get_db() -> AsyncSession:
+def get_db() -> Session:
     """Dependency: get database session."""
-    async with async_session_maker() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+    db = session_maker()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-async def init_db():
+def init_db():
     """Initialize database tables."""
-    async with engine.begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
-        await conn.run_sync(Base.metadata.create_all)
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
+    Base.metadata.create_all(bind=engine)
 
 
-async def drop_db():
+def drop_db():
     """Drop all database tables."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    Base.metadata.drop_all(bind=engine)

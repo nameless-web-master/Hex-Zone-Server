@@ -1,6 +1,6 @@
 """Router for Owner/User endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.schemas import (
     OwnerCreate,
@@ -20,11 +20,11 @@ router = APIRouter(prefix="/owners", tags=["owners"])
 @router.post("/register", response_model=OwnerResponse, status_code=status.HTTP_201_CREATED)
 async def register_owner(
     owner: OwnerCreate,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Register a new owner."""
     # Check if email already exists
-    existing_owner = await owner_crud.get_owner_by_email(db, owner.email)
+    existing_owner = owner_crud.get_owner_by_email(db, owner.email)
     if existing_owner:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -32,8 +32,8 @@ async def register_owner(
         )
     
     # Create owner
-    db_owner = await owner_crud.create_owner(db, owner)
-    await db.commit()
+    db_owner = owner_crud.create_owner(db, owner)
+    db.commit()
     
     return OwnerResponse.model_validate(db_owner)
 
@@ -41,10 +41,10 @@ async def register_owner(
 @router.post("/login", response_model=TokenResponse)
 async def login(
     credentials: LoginRequest,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Login with email and password."""
-    owner = await owner_crud.get_owner_by_email(db, credentials.email)
+    owner = owner_crud.get_owner_by_email(db, credentials.email)
     if not owner:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -80,10 +80,10 @@ async def login(
 @router.get("/me", response_model=OwnerDetailResponse)
 async def get_current_owner(
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Get current authenticated owner."""
-    owner = await owner_crud.get_owner(db, current_user["user_id"])
+    owner = owner_crud.get_owner(db, current_user["user_id"])
     if not owner:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -96,10 +96,10 @@ async def get_current_owner(
 async def get_owner(
     owner_id: int,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Get an owner by ID (requires authentication)."""
-    owner = await owner_crud.get_owner(db, owner_id)
+    owner = owner_crud.get_owner(db, owner_id)
     if not owner:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -113,10 +113,10 @@ async def list_owners(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """List all owners (requires authentication)."""
-    owners = await owner_crud.list_owners(db, skip=skip, limit=limit)
+    owners = owner_crud.list_owners(db, skip=skip, limit=limit)
     return [OwnerResponse.model_validate(owner) for owner in owners]
 
 
@@ -125,7 +125,7 @@ async def update_owner(
     owner_id: int,
     owner_update: OwnerUpdate,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Update an owner."""
     if current_user["user_id"] != owner_id:
@@ -134,14 +134,14 @@ async def update_owner(
             detail="Not authorized to update this owner",
         )
     
-    updated_owner = await owner_crud.update_owner(db, owner_id, owner_update)
+    updated_owner = owner_crud.update_owner(db, owner_id, owner_update)
     if not updated_owner:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
     
-    await db.commit()
+    db.commit()
     return OwnerResponse.model_validate(updated_owner)
 
 
@@ -149,7 +149,7 @@ async def update_owner(
 async def delete_owner(
     owner_id: int,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Delete an owner."""
     if current_user["user_id"] != owner_id:
@@ -158,11 +158,11 @@ async def delete_owner(
             detail="Not authorized to delete this owner",
         )
     
-    deleted = await owner_crud.delete_owner(db, owner_id)
+    deleted = owner_crud.delete_owner(db, owner_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
     
-    await db.commit()
+    db.commit()

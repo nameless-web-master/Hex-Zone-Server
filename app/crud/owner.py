@@ -1,5 +1,5 @@
 """CRUD operations for Owner/User."""
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from app.models import Owner
@@ -8,7 +8,7 @@ from app.core.security import get_password_hash, generate_api_key
 from typing import Optional
 
 
-async def create_owner(db: AsyncSession, owner: OwnerCreate) -> Owner:
+def create_owner(db: Session, owner: OwnerCreate) -> Owner:
     """Create a new owner."""
     api_key = generate_api_key()
     db_owner = Owner(
@@ -22,14 +22,14 @@ async def create_owner(db: AsyncSession, owner: OwnerCreate) -> Owner:
         address=owner.address,
     )
     db.add(db_owner)
-    await db.flush()
-    await db.refresh(db_owner)
+    db.flush()
+    db.refresh(db_owner)
     return db_owner
 
 
-async def get_owner(db: AsyncSession, owner_id: int) -> Optional[Owner]:
+def get_owner(db: Session, owner_id: int) -> Optional[Owner]:
     """Get an owner by ID."""
-    result = await db.execute(
+    result = db.execute(
         select(Owner)
         .where(Owner.id == owner_id)
         .options(selectinload(Owner.devices), selectinload(Owner.zones))
@@ -37,21 +37,21 @@ async def get_owner(db: AsyncSession, owner_id: int) -> Optional[Owner]:
     return result.scalars().first()
 
 
-async def get_owner_by_email(db: AsyncSession, email: str) -> Optional[Owner]:
+def get_owner_by_email(db: Session, email: str) -> Optional[Owner]:
     """Get an owner by email."""
-    result = await db.execute(select(Owner).where(Owner.email == email))
+    result = db.execute(select(Owner).where(Owner.email == email))
     return result.scalars().first()
 
 
-async def get_owner_by_api_key(db: AsyncSession, api_key: str) -> Optional[Owner]:
+def get_owner_by_api_key(db: Session, api_key: str) -> Optional[Owner]:
     """Get an owner by API key."""
-    result = await db.execute(select(Owner).where(Owner.api_key == api_key))
+    result = db.execute(select(Owner).where(Owner.api_key == api_key))
     return result.scalars().first()
 
 
-async def list_owners(db: AsyncSession, skip: int = 0, limit: int = 100):
+def list_owners(db: Session, skip: int = 0, limit: int = 100):
     """List all owners."""
-    result = await db.execute(
+    result = db.execute(
         select(Owner)
         .offset(skip)
         .limit(limit)
@@ -60,9 +60,9 @@ async def list_owners(db: AsyncSession, skip: int = 0, limit: int = 100):
     return result.scalars().all()
 
 
-async def update_owner(db: AsyncSession, owner_id: int, owner_update: OwnerUpdate) -> Optional[Owner]:
+def update_owner(db: Session, owner_id: int, owner_update: OwnerUpdate) -> Optional[Owner]:
     """Update an owner."""
-    db_owner = await get_owner(db, owner_id)
+    db_owner = get_owner(db, owner_id)
     if not db_owner:
         return None
     
@@ -70,22 +70,22 @@ async def update_owner(db: AsyncSession, owner_id: int, owner_update: OwnerUpdat
     for field, value in update_data.items():
         setattr(db_owner, field, value)
     
-    await db.flush()
-    await db.refresh(db_owner)
+    db.flush()
+    db.refresh(db_owner)
     return db_owner
 
 
-async def delete_owner(db: AsyncSession, owner_id: int) -> bool:
+def delete_owner(db: Session, owner_id: int) -> bool:
     """Delete an owner."""
-    db_owner = await get_owner(db, owner_id)
+    db_owner = get_owner(db, owner_id)
     if not db_owner:
         return False
     
-    await db.delete(db_owner)
+    db.delete(db_owner)
     return True
 
 
-async def count_owners(db: AsyncSession) -> int:
+def count_owners(db: Session) -> int:
     """Count all owners."""
-    result = await db.execute(select(Owner))
+    result = db.execute(select(Owner))
     return len(result.scalars().all())

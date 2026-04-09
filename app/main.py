@@ -3,7 +3,6 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.database import get_db, init_db
 from app.routers import owners, devices, zones, utils
@@ -14,7 +13,7 @@ async def lifespan(app: FastAPI):
     """Manage startup and shutdown of the app."""
     # Startup
     print("Starting Zone Weaver backend...")
-    await init_db()
+    init_db()
     print("Database initialized")
     yield
     # Shutdown

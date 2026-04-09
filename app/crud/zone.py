@@ -1,5 +1,5 @@
 """CRUD operations for Zone."""
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy import func
 from app.models import Zone
@@ -10,7 +10,7 @@ from typing import Optional, List
 import uuid
 
 
-async def create_zone(db: AsyncSession, owner_id: int, zone: ZoneCreate) -> Zone:
+def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
     """Create a new zone."""
     zone_id = str(uuid.uuid4())
     h3_cells = zone.h3_cells.copy()
@@ -32,22 +32,22 @@ async def create_zone(db: AsyncSession, owner_id: int, zone: ZoneCreate) -> Zone
         parameters=zone.parameters or {},
     )
     db.add(db_zone)
-    await db.flush()
-    await db.refresh(db_zone)
+    db.flush()
+    db.refresh(db_zone)
     return db_zone
 
 
-async def get_zone(db: AsyncSession, zone_id: str, owner_id: Optional[int] = None) -> Optional[Zone]:
+def get_zone(db: Session, zone_id: str, owner_id: Optional[int] = None) -> Optional[Zone]:
     """Get a zone by zone_id."""
     query = select(Zone).where(Zone.zone_id == zone_id)
     if owner_id is not None:
         query = query.where(Zone.owner_id == owner_id)
-    result = await db.execute(query)
+    result = db.execute(query)
     return result.scalars().first()
 
 
-async def list_zones(
-    db: AsyncSession,
+def list_zones(
+    db: Session,
     owner_id: int,
     skip: int = 0,
     limit: int = 100,
@@ -58,18 +58,18 @@ async def list_zones(
     if active_only:
         query = query.where(Zone.active == True)
     query = query.offset(skip).limit(limit)
-    result = await db.execute(query)
+    result = db.execute(query)
     return result.scalars().all()
 
 
-async def update_zone(
-    db: AsyncSession,
+def update_zone(
+    db: Session,
     zone_id: str,
     zone_update: ZoneUpdate,
     owner_id: Optional[int] = None,
 ) -> Optional[Zone]:
     """Update a zone."""
-    db_zone = await get_zone(db, zone_id, owner_id)
+    db_zone = get_zone(db, zone_id, owner_id)
     if not db_zone:
         return None
     
@@ -79,24 +79,24 @@ async def update_zone(
             value = ZoneType(value)
         setattr(db_zone, field, value)
     
-    await db.flush()
-    await db.refresh(db_zone)
+    db.flush()
+    db.refresh(db_zone)
     return db_zone
 
 
-async def delete_zone(db: AsyncSession, zone_id: str, owner_id: Optional[int] = None) -> bool:
+def delete_zone(db: Session, zone_id: str, owner_id: Optional[int] = None) -> bool:
     """Delete a zone."""
-    db_zone = await get_zone(db, zone_id, owner_id)
+    db_zone = get_zone(db, zone_id, owner_id)
     if not db_zone:
         return False
     
-    await db.delete(db_zone)
+    db.delete(db_zone)
     return True
 
 
-async def count_zones(db: AsyncSession, owner_id: int) -> int:
+def count_zones(db: Session, owner_id: int) -> int:
     """Count zones for an owner."""
-    result = await db.execute(
+    result = db.execute(
         select(func.count(Zone.id)).where(Zone.owner_id == owner_id)
     )
     return result.scalar()

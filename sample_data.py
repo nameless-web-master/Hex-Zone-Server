@@ -1,18 +1,16 @@
 """Sample data for testing and development."""
-import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import async_session_maker, init_db
+from app.database import session_maker, init_db
 from app.crud.owner import create_owner
 from app.crud.device import create_device
 from app.crud.zone import create_zone
 from app.schemas.schemas import OwnerCreate, DeviceCreate, ZoneCreate, AccountTypeEnum, ZoneTypeEnum
 
 
-async def load_sample_data():
+def load_sample_data():
     """Load sample data into database."""
-    await init_db()
+    init_db()
     
-    async with async_session_maker() as db:
+    with session_maker() as db:
         print("Loading sample data...")
         
         # Create sample owners
@@ -25,7 +23,7 @@ async def load_sample_data():
             phone="+1-555-0001",
             address="123 Market St, San Francisco, CA",
         )
-        owner1 = await create_owner(db, owner1_data)
+        owner1 = create_owner(db, owner1_data)
         print(f"✓ Created owner: {owner1.email}")
         
         owner2_data = OwnerCreate(
@@ -37,7 +35,7 @@ async def load_sample_data():
             phone="+1-555-0002",
             address="456 Broadway, New York, NY",
         )
-        owner2 = await create_owner(db, owner2_data)
+        owner2 = create_owner(db, owner2_data)
         print(f"✓ Created owner: {owner2.email}")
         
         # Create sample devices for owner1
@@ -50,7 +48,7 @@ async def load_sample_data():
             propagate_enabled=True,
             propagate_radius_km=2.0,
         )
-        device1 = await create_device(db, owner1.id, device1_data)
+        device1 = create_device(db, owner1.id, device1_data)
         print(f"✓ Created device: {device1.hid}")
         
         device2_data = DeviceCreate(
@@ -62,7 +60,7 @@ async def load_sample_data():
             propagate_enabled=True,
             propagate_radius_km=1.5,
         )
-        device2 = await create_device(db, owner1.id, device2_data)
+        device2 = create_device(db, owner1.id, device2_data)
         print(f"✓ Created device: {device2.hid}")
         
         # Create sample devices for owner2
@@ -75,7 +73,7 @@ async def load_sample_data():
             propagate_enabled=True,
             propagate_radius_km=3.0,
         )
-        device3 = await create_device(db, owner2.id, device3_data)
+        device3 = create_device(db, owner2.id, device3_data)
         print(f"✓ Created device: {device3.hid}")
         
         # Create sample zones for owner1
@@ -88,7 +86,7 @@ async def load_sample_data():
             longitude=-122.4194,
             h3_resolution=13,
         )
-        zone1 = await create_zone(db, owner1.id, zone1_data)
+        zone1 = create_zone(db, owner1.id, zone1_data)
         print(f"✓ Created zone: {zone1.zone_id}")
         
         zone2_data = ZoneCreate(
@@ -100,7 +98,7 @@ async def load_sample_data():
             longitude=-74.0060,
             h3_resolution=13,
         )
-        zone2 = await create_zone(db, owner1.id, zone2_data)
+        zone2 = create_zone(db, owner1.id, zone2_data)
         print(f"✓ Created zone: {zone2.zone_id}")
         
         # Create sample zone for owner2
@@ -113,10 +111,10 @@ async def load_sample_data():
             longitude=-0.1278,
             h3_resolution=13,
         )
-        zone3 = await create_zone(db, owner2.id, zone3_data)
+        zone3 = create_zone(db, owner2.id, zone3_data)
         print(f"✓ Created zone: {zone3.zone_id}")
         
-        await db.commit()
+        db.commit()
         print("\n✅ Sample data loaded successfully!")
         print(f"\nSample Credentials:")
         print(f"  User 1: alice@example.com / SecurePassword123")
@@ -124,4 +122,4 @@ async def load_sample_data():
 
 
 if __name__ == "__main__":
-    asyncio.run(load_sample_data())
+    load_sample_data()

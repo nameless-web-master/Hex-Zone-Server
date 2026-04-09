@@ -1,5 +1,5 @@
 """CRUD operations for QR Registration."""
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from app.models import QRRegistration
 from app.core.security import generate_qr_token
@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 
-async def create_qr_registration(
-    db: AsyncSession,
+def create_qr_registration(
+    db: Session,
     owner_id: int,
     expires_in_hours: int = 24,
 ) -> QRRegistration:
@@ -22,39 +22,39 @@ async def create_qr_registration(
         expires_at=expires_at,
     )
     db.add(db_qr)
-    await db.flush()
-    await db.refresh(db_qr)
+    db.flush()
+    db.refresh(db_qr)
     return db_qr
 
 
-async def get_qr_registration(db: AsyncSession, token: str) -> Optional[QRRegistration]:
+def get_qr_registration(db: Session, token: str) -> Optional[QRRegistration]:
     """Get a QR registration by token."""
-    result = await db.execute(
+    result = db.execute(
         select(QRRegistration).where(QRRegistration.token == token)
     )
     return result.scalars().first()
 
 
-async def mark_qr_registration_used(db: AsyncSession, token: str) -> Optional[QRRegistration]:
+def mark_qr_registration_used(db: Session, token: str) -> Optional[QRRegistration]:
     """Mark a QR registration as used."""
-    qr = await get_qr_registration(db, token)
+    qr = get_qr_registration(db, token)
     if not qr:
         return None
     
     qr.used = True
-    await db.flush()
-    await db.refresh(qr)
+    db.flush()
+    db.refresh(qr)
     return qr
 
 
-async def list_qr_registrations(
-    db: AsyncSession,
+def list_qr_registrations(
+    db: Session,
     owner_id: int,
     skip: int = 0,
     limit: int = 100,
 ) -> list:
     """List QR registrations for an owner."""
-    result = await db.execute(
+    result = db.execute(
         select(QRRegistration)
         .where(QRRegistration.owner_id == owner_id)
         .offset(skip)

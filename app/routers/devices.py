@@ -1,6 +1,6 @@
 """Router for Device endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.schemas import (
     DeviceCreate,
@@ -21,11 +21,11 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 async def create_device(
     device: DeviceCreate,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Create a new device for the current owner."""
-    db_device = await device_crud.create_device(db, current_user["user_id"], device)
-    await db.commit()
+    db_device = device_crud.create_device(db, current_user["user_id"], device)
+    db.commit()
     return DeviceResponse.model_validate(db_device)
 
 
@@ -34,10 +34,10 @@ async def list_devices(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """List devices for the current owner."""
-    devices = await device_crud.list_devices(
+    devices = device_crud.list_devices(
         db,
         owner_id=current_user["user_id"],
         skip=skip,
@@ -50,10 +50,10 @@ async def list_devices(
 async def get_device(
     device_id: int,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Get a device by ID."""
-    device = await device_crud.get_device(db, device_id, owner_id=current_user["user_id"])
+    device = device_crud.get_device(db, device_id, owner_id=current_user["user_id"])
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -66,10 +66,10 @@ async def get_device(
 async def get_device_by_hid(
     hid: str,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Get a device by hardware ID."""
-    device = await device_crud.get_device_by_hid(db, hid, owner_id=current_user["user_id"])
+    device = device_crud.get_device_by_hid(db, hid, owner_id=current_user["user_id"])
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -83,10 +83,10 @@ async def update_device(
     device_id: int,
     device_update: DeviceUpdate,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Update a device."""
-    device = await device_crud.update_device(
+    device = device_crud.update_device(
         db,
         device_id,
         device_update,
@@ -97,7 +97,7 @@ async def update_device(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Device not found",
         )
-    await db.commit()
+    db.commit()
     return DeviceResponse.model_validate(device)
 
 
@@ -106,10 +106,10 @@ async def update_device_location(
     device_id: int,
     location: DeviceLocationUpdate,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Update device location and calculate H3 cell."""
-    device = await device_crud.get_device(db, device_id, owner_id=current_user["user_id"])
+    device = device_crud.get_device(db, device_id, owner_id=current_user["user_id"])
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -125,7 +125,7 @@ async def update_device_location(
         longitude=location.longitude,
         address=location.address,
     )
-    updated_device = await device_crud.update_device(
+    updated_device = device_crud.update_device(
         db,
         device_id,
         update_data,
@@ -133,7 +133,7 @@ async def update_device_location(
     )
     updated_device.h3_cell_id = h3_cell_id
     
-    await db.commit()
+    db.commit()
     return DeviceResponse.model_validate(updated_device)
 
 
@@ -141,13 +141,13 @@ async def update_device_location(
 async def delete_device(
     device_id: int,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Delete a device."""
-    deleted = await device_crud.delete_device(db, device_id, owner_id=current_user["user_id"])
+    deleted = device_crud.delete_device(db, device_id, owner_id=current_user["user_id"])
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Device not found",
         )
-    await db.commit()
+    db.commit()

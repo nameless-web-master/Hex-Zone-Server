@@ -1,39 +1,36 @@
 """Tests for registration and H3 conversion."""
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.database import Base, get_db
-from app.schemas.schemas import OwnerCreate, AccountTypeEnum
-from app.crud.owner import create_owner
 from app.core.h3_utils import lat_lng_to_h3_cell, validate_h3_cell
 
 # Test database URL
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+TEST_DATABASE_URL = "sqlite:///:memory:"
 
 
 @pytest.fixture
-async def test_db():
+def test_db():
     """Create test database session."""
-    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    engine = create_engine(TEST_DATABASE_URL, echo=False)
+    testing_session_maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
     # Create tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    Base.metadata.create_all(bind=engine)
     
-    async with async_session() as session:
+    with testing_session_maker() as session:
         yield session
     
     # Drop tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
 def override_get_db(test_db):
     """Override the get_db dependency."""
-    async def _override_get_db():
+    def _override_get_db():
         yield test_db
     
     app.dependency_overrides[get_db] = _override_get_db
