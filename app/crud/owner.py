@@ -1,8 +1,10 @@
 """CRUD operations for Owner/User."""
+import json
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from app.models import Owner
+from sqlalchemy import func
+from app.models import Owner, Zone
 from app.schemas.schemas import OwnerCreate, OwnerUpdate
 from app.core.security import get_password_hash, generate_api_key
 from typing import Optional
@@ -27,6 +29,12 @@ def create_owner(db: Session, owner: OwnerCreate) -> Owner:
     return db_owner
 
 
+def _geojson_text_to_dict(geojson_text: Optional[str]) -> Optional[dict]:
+    if geojson_text is None:
+        return None
+    return json.loads(geojson_text)
+
+
 def get_owner(db: Session, owner_id: int) -> Optional[Owner]:
     """Get an owner by ID."""
     result = db.execute(
@@ -34,7 +42,21 @@ def get_owner(db: Session, owner_id: int) -> Optional[Owner]:
         .where(Owner.id == owner_id)
         .options(selectinload(Owner.devices), selectinload(Owner.zones))
     )
-    return result.scalars().first()
+    owner = result.scalars().first()
+
+    if owner and owner.zones:
+        zone_ids = [zone.id for zone in owner.zones if zone.geo_fence_polygon is not None]
+        if zone_ids:
+            geojson_rows = db.execute(
+                select(Zone.id, func.ST_AsGeoJSON(Zone.geo_fence_polygon))
+                .where(Zone.id.in_(zone_ids))
+            ).all()
+            geojson_map = {zone_id: _geojson_text_to_dict(geojson_text) for zone_id, geojson_text in geojson_rows}
+            for zone in owner.zones:
+                if zone.id in geojson_map:
+                    zone.geo_fence_polygon = geojson_map[zone.id]
+
+    return owner
 
 
 def get_owner_by_email(db: Session, email: str) -> Optional[Owner]:
