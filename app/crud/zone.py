@@ -3,7 +3,6 @@ import json
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy import func
-from geoalchemy2.elements import WKTElement
 from app.models import Zone
 from app.models.zone import ZoneType
 from app.schemas.schemas import ZoneCreate, ZoneUpdate
@@ -32,6 +31,13 @@ def geojson_to_wkt(geojson: dict) -> str:
     return f"MULTIPOLYGON({multipolygon_text})"
 
 
+def _geojson_to_geometry(geojson: Optional[dict]):
+    if geojson is None:
+        return None
+    wkt = geojson_to_wkt(geojson)
+    return func.ST_GeomFromEWKT(f"SRID=4326;{wkt}")
+
+
 def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
     """Create a new zone."""
     zone_id = str(uuid.uuid4())
@@ -46,7 +52,7 @@ def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
             h3_cells.append(center_cell)
 
     if zone.geo_fence_polygon is not None:
-        geo_fence_polygon = WKTElement(geojson_to_wkt(zone.geo_fence_polygon), srid=4326)
+        geo_fence_polygon = _geojson_to_geometry(zone.geo_fence_polygon)
 
     db_zone = Zone(
         zone_id=zone_id,
@@ -177,7 +183,7 @@ def update_zone(
             if value is None:
                 setattr(db_zone, field, None)
                 continue
-            value = WKTElement(geojson_to_wkt(value), srid=4326)
+            value = _geojson_to_geometry(value)
         setattr(db_zone, field, value)
     
     db.flush()

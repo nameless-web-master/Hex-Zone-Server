@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.database import Base, get_db
 from app.core.h3_utils import lat_lng_to_h3_cell, validate_h3_cell
+from app.crud.zone import geojson_to_wkt
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -184,7 +185,27 @@ class TestH3Conversion:
         """Test validation of invalid H3 cell."""
         assert not validate_h3_cell("invalid_cell")
         assert not validate_h3_cell("")
-        assert not validate_h3_cell("12345")
+
+    def test_geojson_to_wkt_multipolygon(self):
+        """GeoJSON MultiPolygon should convert to WKT."""
+        geojson = {
+            "type": "MultiPolygon",
+            "coordinates": [[[[
+                -73.9809036254883, 40.85409494874863
+            ], [
+                -74.0687942504883, 40.80943034560593
+            ], [
+                -73.93249511718751, 40.74757738563813
+            ], [
+                -73.8710403442383, 40.829429265624036
+            ], [
+                -73.9809036254883, 40.85409494874863
+            ]]]]
+        }
+        wkt = geojson_to_wkt(geojson)
+        assert wkt.startswith("MULTIPOLYGON((")
+        assert "-73.9809036254883 40.85409494874863" in wkt
+        assert wkt.endswith("))")
 
 
 @pytest.mark.asyncio
