@@ -77,6 +77,9 @@ class DeviceBase(BaseModel):
     address: Optional[str] = None
     propagate_enabled: bool = True
     propagate_radius_km: float = Field(default=1.0, ge=0.1, le=50.0)
+    enable_notification: bool = True
+    alert_threshold_meters: float = Field(default=100.0, ge=1.0, le=1_000_000.0)
+    update_interval_seconds: int = Field(default=60, ge=1, le=86400)
 
 
 class DeviceLocationUpdate(BaseModel):
@@ -96,15 +99,22 @@ class DeviceUpdate(BaseModel):
     """Device update schema."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     address: Optional[str] = None
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
     propagate_enabled: Optional[bool] = None
     propagate_radius_km: Optional[float] = Field(None, ge=0.1, le=50.0)
     active: Optional[bool] = None
+    is_online: Optional[bool] = None
+    enable_notification: Optional[bool] = None
+    alert_threshold_meters: Optional[float] = Field(None, ge=1.0, le=1_000_000.0)
+    update_interval_seconds: Optional[int] = Field(None, ge=1, le=86400)
 
 
 class DeviceResponse(BaseModel):
     """Device response schema."""
     id: int
     hid: str
+    device_id: str
     name: str
     latitude: Optional[float]
     longitude: Optional[float]
@@ -114,6 +124,11 @@ class DeviceResponse(BaseModel):
     propagate_enabled: bool
     propagate_radius_km: float
     active: bool
+    is_online: bool
+    last_seen: Optional[datetime]
+    enable_notification: bool
+    alert_threshold_meters: float
+    update_interval_seconds: int
     created_at: datetime
     updated_at: datetime
 

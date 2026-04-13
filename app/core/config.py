@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
 
     # Database
-    DATABASE_URL: str
+    DATABASE_URL: str = "postgresql+psycopg2://zoneweaver_db_user:FJdjpGjfLn4Fa9VfM2FCRXSfX13jg2rk@dpg-d7bscjggjchc73fhscf0-a.oregon-postgres.render.com/zoneweaver_db_5isc"
 
     # JWT
     SECRET_KEY: str = "your-secret-key-change-in-production-minimum-32-chars-required"

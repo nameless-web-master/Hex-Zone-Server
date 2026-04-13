@@ -11,8 +11,6 @@ from app.schemas.schemas import (
 from app.crud import device as device_crud
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user
-from app.core.h3_utils import lat_lng_to_h3_cell
-from typing import Optional
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -44,6 +42,25 @@ async def list_devices(
         limit=limit,
     )
     return [DeviceResponse.model_validate(device) for device in devices]
+
+
+@router.post("/{device_id}/heartbeat", response_model=DeviceResponse)
+async def device_heartbeat(
+    device_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record device presence (online, last_seen)."""
+    device = device_crud.get_device(db, device_id, owner_id=current_user["user_id"])
+    if not device:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Device not found",
+        )
+    device_crud.touch_presence(db, device)
+    db.commit()
+    db.refresh(device)
+    return DeviceResponse.model_validate(device)
 
 
 @router.get("/{device_id}", response_model=DeviceResponse)
@@ -115,11 +132,7 @@ async def update_device_location(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Device not found",
         )
-    
-    # Calculate H3 cell
-    h3_cell_id = lat_lng_to_h3_cell(location.latitude, location.longitude)
-    
-    # Update device
+
     update_data = DeviceUpdate(
         latitude=location.latitude,
         longitude=location.longitude,
@@ -131,8 +144,8 @@ async def update_device_location(
         update_data,
         owner_id=current_user["user_id"],
     )
-    updated_device.h3_cell_id = h3_cell_id
-    
+    device_crud.touch_presence(db, updated_device)
+
     db.commit()
     return DeviceResponse.model_validate(updated_device)
 

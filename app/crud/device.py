@@ -1,4 +1,5 @@
 """CRUD operations for Device."""
+from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -24,6 +25,9 @@ def create_device(db: Session, owner_id: int, device: DeviceCreate) -> Device:
         owner_id=owner_id,
         propagate_enabled=device.propagate_enabled,
         propagate_radius_km=device.propagate_radius_km,
+        enable_notification=device.enable_notification,
+        alert_threshold_meters=device.alert_threshold_meters,
+        update_interval_seconds=device.update_interval_seconds,
     )
     db.add(db_device)
     db.flush()
@@ -79,10 +83,20 @@ def update_device(
     update_data = device_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_device, field, value)
-    
+
+    if db_device.latitude is not None and db_device.longitude is not None:
+        db_device.h3_cell_id = lat_lng_to_h3_cell(db_device.latitude, db_device.longitude)
+
     db.flush()
     db.refresh(db_device)
     return db_device
+
+
+def touch_presence(db: Session, db_device: Device) -> None:
+    """Mark device as online and refresh last_seen (UTC)."""
+    db_device.last_seen = datetime.utcnow()
+    db_device.is_online = True
+    db.flush()
 
 
 def delete_device(db: Session, device_id: int, owner_id: Optional[int] = None) -> bool:

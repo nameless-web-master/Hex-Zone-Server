@@ -28,11 +28,21 @@ class Device(Base):
     
     # Status
     active = Column(Boolean, default=True, nullable=False)
+    is_online = Column(Boolean, default=False, nullable=False)
+    last_seen = Column(DateTime, nullable=True)
+    enable_notification = Column(Boolean, default=True, nullable=False)
+    alert_threshold_meters = Column(Float, default=100.0, nullable=False)
+    update_interval_seconds = Column(Integer, default=60, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     owner = relationship("Owner", back_populates="devices")
+
+    @property
+    def device_id(self) -> str:
+        """String device identifier (hardware id)."""
+        return self.hid
 
     __table_args__ = (
         Index("ix_device_hid", "hid"),
