@@ -70,7 +70,7 @@ async def create_zone(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve created zone",
         )
-    return ZoneResponse.model_validate(created_zone)
+    return ZoneResponse.model_validate(zone_crud.zone_to_dict(created_zone))
 
 
 @router.get("/", response_model=list[ZoneResponse])
@@ -94,7 +94,7 @@ async def list_zones(
         skip=skip,
         limit=limit,
     )
-    return [ZoneResponse.model_validate(zone) for zone in zones]
+    return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
 
 
 @router.get("/{zone_id}", response_model=ZoneResponse)
@@ -110,7 +110,7 @@ async def get_zone(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Zone not found",
         )
-    return ZoneResponse.model_validate(zone)
+    return ZoneResponse.model_validate(zone_crud.zone_to_dict(zone))
 
 
 @router.patch("/{zone_id}", response_model=ZoneResponse)
@@ -156,7 +156,7 @@ async def update_zone(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve updated zone",
         )
-    return ZoneResponse.model_validate(updated_zone)
+    return ZoneResponse.model_validate(zone_crud.zone_to_dict(updated_zone))
 
 
 @router.delete("/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)

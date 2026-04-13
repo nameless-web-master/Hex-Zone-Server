@@ -8,7 +8,7 @@ from app.models import Zone
 from app.models.zone import ZoneType
 from app.schemas.schemas import ZoneCreate, ZoneUpdate
 from app.core.h3_utils import lat_lng_to_h3_cell
-from typing import Optional, List
+from typing import Optional, List, Any
 import uuid
 
 
@@ -114,6 +114,24 @@ def list_zones(
     query = query.offset(skip).limit(limit)
     result = db.execute(query)
     return result.scalars().all()
+
+
+def zone_to_dict(zone: Zone) -> dict[str, Any]:
+    """Convert a Zone ORM instance into a plain dictionary for serialization."""
+    return {
+        "id": zone.id,
+        "zone_id": zone.zone_id,
+        "owner_id": zone.owner_id,
+        "zone_type": zone.zone_type,
+        "name": zone.name,
+        "description": zone.description,
+        "h3_cells": zone.h3_cells,
+        "geo_fence_polygon": zone.geo_fence_polygon,
+        "parameters": zone.parameters,
+        "active": zone.active,
+        "created_at": zone.created_at,
+        "updated_at": zone.updated_at,
+    }
 
 
 def list_zones_with_geojson(
