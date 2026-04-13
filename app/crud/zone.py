@@ -37,9 +37,11 @@ def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
     return db_zone
 
 
-def get_zone(db: Session, zone_id: str, owner_id: Optional[int] = None) -> Optional[Zone]:
-    """Get a zone by zone_id."""
-    query = select(Zone).where(Zone.zone_id == zone_id)
+def get_zone(db: Session, zone_id: Optional[str] = None, owner_id: Optional[int] = None) -> Optional[Zone]:
+    """Get a zone by zone_id and/or owner_id."""
+    query = select(Zone)
+    if zone_id is not None:
+        query = query.where(Zone.zone_id == zone_id)
     if owner_id is not None:
         query = query.where(Zone.owner_id == owner_id)
     result = db.execute(query)
