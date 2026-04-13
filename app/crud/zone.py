@@ -3,7 +3,6 @@ import json
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy import func
-from geoalchemy2.elements import WKTElement
 from app.models import Zone
 from app.models.zone import ZoneType
 from app.schemas.schemas import ZoneCreate, ZoneUpdate
@@ -36,7 +35,7 @@ def _geojson_to_geometry(geojson: Optional[dict]):
     if geojson is None:
         return None
     wkt = geojson_to_wkt(geojson)
-    return WKTElement(wkt, srid=4326)
+    return f"SRID=4326;{wkt}"
 
 
 def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:

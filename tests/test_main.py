@@ -207,6 +207,26 @@ class TestH3Conversion:
         assert "-73.9809036254883 40.85409494874863" in wkt
         assert wkt.endswith("))")
 
+    def test_geojson_to_geometry_ewkt(self):
+        """GeoJSON polygon should convert to SRID EWKT string."""
+        from app.crud.zone import _geojson_to_geometry
+
+        geojson = {
+            "type": "Polygon",
+            "coordinates": [[
+                [-73.9809036254883, 40.85409494874863],
+                [-74.0687942504883, 40.80943034560593],
+                [-73.93249511718751, 40.74757738563813],
+                [-73.9809036254883, 40.85409494874863],
+            ]]
+        }
+
+        ewkt = _geojson_to_geometry(geojson)
+        assert isinstance(ewkt, str)
+        assert ewkt.startswith("SRID=4326;")
+        assert "MULTIPOLYGON(((" in ewkt
+        assert "-73.9809036254883 40.85409494874863" in ewkt
+
 
 @pytest.mark.asyncio
 async def test_h3_conversion_endpoint(test_db, override_get_db):
