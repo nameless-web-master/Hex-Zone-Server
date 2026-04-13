@@ -1,11 +1,15 @@
 """Main FastAPI application."""
-from fastapi import Depends, FastAPI
+import logging
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from sqlalchemy import text
 from app.core.config import settings
 from app.database import get_db, init_db
 from app.routers import owners, devices, zones, utils
+
+logging.basicConfig(level=logging.INFO)
 
 # Lifespan context
 @asynccontextmanager
@@ -32,10 +36,20 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=86400,
 )
+
+@app.exception_handler(Exception)
+async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+    logging.exception("Unhandled error processing request %s %s", request.method, request.url)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 # Include routers
 app.include_router(owners.router)
