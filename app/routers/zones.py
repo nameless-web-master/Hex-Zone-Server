@@ -66,13 +66,20 @@ async def create_zone(
 async def list_zones(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    owner_id: Optional[int] = Query(None, ge=1),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List zones for the current owner."""
+    """List zones for the current owner or a specific owner when provided."""
+    if owner_id is not None and owner_id != current_user["user_id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: cannot access another owner's zones",
+        )
+
     zones = zone_crud.list_zones(
         db,
-        owner_id=current_user["user_id"],
+        owner_id=owner_id or current_user["user_id"],
         skip=skip,
         limit=limit,
     )
