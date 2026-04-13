@@ -82,7 +82,7 @@ async def list_zones(
             detail="Forbidden: cannot access another owner's zones",
         )
 
-    zones = zone_crud.list_zones(
+    zones = zone_crud.list_zones_with_geojson(
         db,
         owner_id=owner_id or current_user["user_id"],
         skip=skip,
@@ -98,7 +98,7 @@ async def get_zone(
     db: Session = Depends(get_db),
 ):
     """Get a zone by zone_id."""
-    zone = zone_crud.get_zone(db, zone_id, owner_id=current_user["user_id"])
+    zone = zone_crud.get_zone_with_geojson(db, zone_id, owner_id=current_user["user_id"])
     if not zone:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

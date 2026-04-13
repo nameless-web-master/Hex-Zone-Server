@@ -160,6 +160,7 @@ class ZoneResponse(BaseModel):
     name: str
     description: Optional[str]
     h3_cells: List[str]
+    geo_fence_polygon: Optional[dict] = None
     parameters: Optional[dict]
     active: bool
     created_at: datetime

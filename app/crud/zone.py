@@ -1,4 +1,5 @@
 """CRUD operations for Zone."""
+import json
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -63,6 +64,12 @@ def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
     return db_zone
 
 
+def _geojson_text_to_dict(geojson_text: Optional[str]) -> Optional[dict]:
+    if not geojson_text:
+        return None
+    return json.loads(geojson_text)
+
+
 def get_zone(db: Session, zone_id: Optional[str] = None, owner_id: Optional[int] = None) -> Optional[Zone]:
     """Get a zone by zone_id and/or owner_id."""
     query = select(Zone)
@@ -72,6 +79,25 @@ def get_zone(db: Session, zone_id: Optional[str] = None, owner_id: Optional[int]
         query = query.where(Zone.owner_id == owner_id)
     result = db.execute(query)
     return result.scalars().first()
+
+
+def get_zone_with_geojson(db: Session, zone_id: Optional[str] = None, owner_id: Optional[int] = None) -> Optional[Zone]:
+    """Get a zone by zone_id and/or owner_id, including GeoJSON polygon."""
+    query = select(
+        Zone,
+        func.ST_AsGeoJSON(Zone.geo_fence_polygon).label("geo_fence_polygon"),
+    )
+    if zone_id is not None:
+        query = query.where(Zone.zone_id == zone_id)
+    if owner_id is not None:
+        query = query.where(Zone.owner_id == owner_id)
+    result = db.execute(query)
+    row = result.first()
+    if not row:
+        return None
+    zone, geojson_text = row
+    zone.geo_fence_polygon = _geojson_text_to_dict(geojson_text)
+    return zone
 
 
 def list_zones(
@@ -88,6 +114,30 @@ def list_zones(
     query = query.offset(skip).limit(limit)
     result = db.execute(query)
     return result.scalars().all()
+
+
+def list_zones_with_geojson(
+    db: Session,
+    owner_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    active_only: bool = True,
+) -> List[Zone]:
+    """List zones for an owner and include GeoJSON polygon data."""
+    query = select(
+        Zone,
+        func.ST_AsGeoJSON(Zone.geo_fence_polygon).label("geo_fence_polygon"),
+    ).where(Zone.owner_id == owner_id)
+    if active_only:
+        query = query.where(Zone.active == True)
+    query = query.offset(skip).limit(limit)
+    result = db.execute(query).all()
+
+    zones: List[Zone] = []
+    for zone, geojson_text in result:
+        zone.geo_fence_polygon = _geojson_text_to_dict(geojson_text)
+        zones.append(zone)
+    return zones
 
 
 def update_zone(
