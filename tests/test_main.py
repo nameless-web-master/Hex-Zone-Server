@@ -227,6 +227,42 @@ class TestH3Conversion:
         assert "MULTIPOLYGON(((" in ewkt
         assert "-73.9809036254883 40.85409494874863" in ewkt
 
+    def test_zone_model_geojson_validator(self):
+        """Zone model should convert dict GeoJSON to EWKT on assignment."""
+        from app.models.zone import Zone
+
+        geojson = {
+            "type": "MultiPolygon",
+            "coordinates": [[[[
+                -73.964424133, 40.875621535
+            ], [
+                -74.085273743, 40.79093771
+            ], [
+                -73.906059265, 40.787558505
+            ], [
+                -73.922538757, 40.852513065
+            ], [
+                -73.964767456, 40.87432352
+            ], [
+                -73.964424133, 40.875621535
+            ]]]]
+        }
+
+        zone = Zone(
+            zone_id="test-zone",
+            owner_id=1,
+            zone_type="geofence",
+            name="Test Zone",
+            description="desc",
+            h3_cells=[],
+            geo_fence_polygon=geojson,
+            parameters={},
+        )
+
+        assert isinstance(zone.geo_fence_polygon, str)
+        assert zone.geo_fence_polygon.startswith("SRID=4326;")
+        assert "MULTIPOLYGON(((" in zone.geo_fence_polygon
+
 
 @pytest.mark.asyncio
 async def test_h3_conversion_endpoint(test_db, override_get_db):

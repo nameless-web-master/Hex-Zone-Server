@@ -1,10 +1,30 @@
 """Zone model."""
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Index, JSON, Text, Enum, Boolean
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from geoalchemy2 import Geometry
 from datetime import datetime
 import enum
 from app.database import Base
+
+
+def _polygon_coords_to_wkt(polygon_coords: list[list[list[float]]]) -> str:
+    rings = []
+    for ring in polygon_coords:
+        rings.append("(" + ", ".join(f"{lng} {lat}" for lng, lat in ring) + ")")
+    return "(" + ",".join(rings) + ")"
+
+
+def geojson_to_wkt(geojson: dict) -> str:
+    geometry_type = geojson.get("type")
+    if geometry_type not in ("Polygon", "MultiPolygon"):
+        raise ValueError("geo_fence_polygon must be a GeoJSON Polygon or MultiPolygon")
+
+    if geometry_type == "Polygon":
+        polygon_text = _polygon_coords_to_wkt(geojson["coordinates"])
+        return f"MULTIPOLYGON({polygon_text})"
+
+    multipolygon_text = ",".join(_polygon_coords_to_wkt(polygon) for polygon in geojson["coordinates"])
+    return f"MULTIPOLYGON({multipolygon_text})"
 
 
 class ZoneType(str, enum.Enum):
@@ -49,6 +69,14 @@ class Zone(Base):
 
     # Relationships
     owner = relationship("Owner", back_populates="zones")
+
+    @validates("geo_fence_polygon")
+    def validate_geo_fence_polygon(self, key, value):
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return f"SRID=4326;{geojson_to_wkt(value)}"
+        return value
 
     __table_args__ = (
         Index("ix_zone_zone_id", "zone_id"),
