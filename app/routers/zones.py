@@ -64,7 +64,13 @@ async def create_zone(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     db.commit()
-    return ZoneResponse.model_validate(db_zone)
+    created_zone = zone_crud.get_zone_with_geojson(db, db_zone.zone_id, owner_id=current_user["user_id"])
+    if not created_zone:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve created zone",
+        )
+    return ZoneResponse.model_validate(created_zone)
 
 
 @router.get("/", response_model=list[ZoneResponse])
@@ -144,7 +150,13 @@ async def update_zone(
             detail="Zone not found",
         )
     db.commit()
-    return ZoneResponse.model_validate(zone)
+    updated_zone = zone_crud.get_zone_with_geojson(db, zone_id, owner_id=current_user["user_id"])
+    if not updated_zone:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve updated zone",
+        )
+    return ZoneResponse.model_validate(updated_zone)
 
 
 @router.delete("/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)
