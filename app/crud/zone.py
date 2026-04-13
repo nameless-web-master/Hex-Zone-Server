@@ -1,6 +1,7 @@
 """CRUD operations for Zone."""
 import json
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.future import select
 from sqlalchemy import func
 from app.models import Zone
@@ -76,6 +77,15 @@ def _geojson_text_to_dict(geojson_text: Optional[str]) -> Optional[dict]:
     return json.loads(geojson_text)
 
 
+def apply_zone_geo_fence_geojson(zone: Zone, geojson_text: Optional[str]) -> None:
+    """Set geo_fence_polygon to a GeoJSON dict for API responses.
+
+    ST_AsGeoJSON is applied in the query; we must not assign via the attribute
+    setter because Zone.validate_geo_fence_polygon converts dicts to EWKT.
+    """
+    set_committed_value(zone, "geo_fence_polygon", _geojson_text_to_dict(geojson_text))
+
+
 def get_zone(db: Session, zone_id: Optional[str] = None, owner_id: Optional[int] = None) -> Optional[Zone]:
     """Get a zone by zone_id and/or owner_id."""
     query = select(Zone)
@@ -102,7 +112,7 @@ def get_zone_with_geojson(db: Session, zone_id: Optional[str] = None, owner_id: 
     if not row:
         return None
     zone, geojson_text = row
-    zone.geo_fence_polygon = _geojson_text_to_dict(geojson_text)
+    apply_zone_geo_fence_geojson(zone, geojson_text)
     return zone
 
 
@@ -159,7 +169,7 @@ def list_zones_with_geojson(
 
     zones: List[Zone] = []
     for zone, geojson_text in result:
-        zone.geo_fence_polygon = _geojson_text_to_dict(geojson_text)
+        apply_zone_geo_fence_geojson(zone, geojson_text)
         zones.append(zone)
     return zones
 

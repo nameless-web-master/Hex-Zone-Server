@@ -1,5 +1,4 @@
 """CRUD operations for Owner/User."""
-import json
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -7,6 +6,7 @@ from sqlalchemy import func
 from app.models import Owner, Zone
 from app.schemas.schemas import OwnerCreate, OwnerUpdate
 from app.core.security import get_password_hash, generate_api_key
+from app.crud.zone import apply_zone_geo_fence_geojson
 from typing import Optional
 
 
@@ -29,12 +29,6 @@ def create_owner(db: Session, owner: OwnerCreate) -> Owner:
     return db_owner
 
 
-def _geojson_text_to_dict(geojson_text: Optional[str]) -> Optional[dict]:
-    if geojson_text is None:
-        return None
-    return json.loads(geojson_text)
-
-
 def get_owner(db: Session, owner_id: int) -> Optional[Owner]:
     """Get an owner by ID."""
     result = db.execute(
@@ -54,7 +48,7 @@ def get_owner(db: Session, owner_id: int) -> Optional[Owner]:
 
     zones = []
     for zone, geojson_text in zone_rows:
-        zone.geo_fence_polygon = _geojson_text_to_dict(geojson_text)
+        apply_zone_geo_fence_geojson(zone, geojson_text)
         zones.append(zone)
 
     owner.zones = zones
