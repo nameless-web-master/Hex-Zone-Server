@@ -40,22 +40,24 @@ def get_owner(db: Session, owner_id: int) -> Optional[Owner]:
     result = db.execute(
         select(Owner)
         .where(Owner.id == owner_id)
-        .options(selectinload(Owner.devices), selectinload(Owner.zones))
+        .options(selectinload(Owner.devices))
     )
     owner = result.scalars().first()
 
-    if owner and owner.zones:
-        zone_ids = [zone.id for zone in owner.zones if zone.geo_fence_polygon is not None]
-        if zone_ids:
-            geojson_rows = db.execute(
-                select(Zone.id, func.ST_AsGeoJSON(Zone.geo_fence_polygon))
-                .where(Zone.id.in_(zone_ids))
-            ).all()
-            geojson_map = {zone_id: _geojson_text_to_dict(geojson_text) for zone_id, geojson_text in geojson_rows}
-            for zone in owner.zones:
-                if zone.id in geojson_map:
-                    zone.geo_fence_polygon = geojson_map[zone.id]
+    if not owner:
+        return None
 
+    zone_rows = db.execute(
+        select(Zone, func.ST_AsGeoJSON(Zone.geo_fence_polygon).label("geo_fence_polygon"))
+        .where(Zone.owner_id == owner_id)
+    ).all()
+
+    zones = []
+    for zone, geojson_text in zone_rows:
+        zone.geo_fence_polygon = _geojson_text_to_dict(geojson_text)
+        zones.append(zone)
+
+    owner.zones = zones
     return owner
 
 
