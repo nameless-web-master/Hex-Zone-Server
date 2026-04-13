@@ -137,6 +137,7 @@ class ZoneCreate(ZoneBase):
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
     h3_resolution: Optional[int] = Field(None, ge=0, le=15)
+    geo_fence_polygon: Optional[dict] = None
 
 
 class ZoneUpdate(BaseModel):
@@ -146,6 +147,7 @@ class ZoneUpdate(BaseModel):
     zone_type: Optional[ZoneTypeEnum] = None
     parameters: Optional[dict] = None
     h3_cells: Optional[List[str]] = None
+    geo_fence_polygon: Optional[dict] = None
     active: Optional[bool] = None
 
 

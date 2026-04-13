@@ -58,7 +58,11 @@ async def create_zone(
             detail=f"Maximum {settings.MAX_ZONES_PER_USER} zones per user reached",
         )
     
-    db_zone = zone_crud.create_zone(db, current_user["user_id"], zone)
+    try:
+        db_zone = zone_crud.create_zone(db, current_user["user_id"], zone)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
     db.commit()
     return ZoneResponse.model_validate(db_zone)
 
@@ -124,12 +128,16 @@ async def update_zone(
             detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
         )
 
-    zone = zone_crud.update_zone(
-        db,
-        zone_id,
-        zone_update,
-        owner_id=current_user["user_id"],
-    )
+    try:
+        zone = zone_crud.update_zone(
+            db,
+            zone_id,
+            zone_update,
+            owner_id=current_user["user_id"],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
     if not zone:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

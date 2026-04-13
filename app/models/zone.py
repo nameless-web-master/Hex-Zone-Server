@@ -37,7 +37,7 @@ class Zone(Base):
     h3_cells = Column(JSON, nullable=False, default=list)  # Array of H3 cell IDs
     
     # PostGIS geometry for polygon-based zones
-    geo_fence_polygon = Column(Geometry("POLYGON", srid=4326), nullable=True)
+    geo_fence_polygon = Column(Geometry("MULTIPOLYGON", srid=4326), nullable=True)
     
     # Zone parameters (flexible JSON for different zone types)
     parameters = Column(JSON, nullable=True)

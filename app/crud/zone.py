@@ -2,6 +2,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy import func
+from geoalchemy2.elements import WKTElement
 from app.models import Zone
 from app.models.zone import ZoneType
 from app.schemas.schemas import ZoneCreate, ZoneUpdate
@@ -10,18 +11,42 @@ from typing import Optional, List
 import uuid
 
 
+def _polygon_coords_to_wkt(polygon_coords: list[list[list[float]]]) -> str:
+    rings = []
+    for ring in polygon_coords:
+        rings.append("(" + ", ".join(f"{lng} {lat}" for lng, lat in ring) + ")")
+    return "(" + ",".join(rings) + ")"
+
+
+def geojson_to_wkt(geojson: dict) -> str:
+    geometry_type = geojson.get("type")
+    if geometry_type not in ("Polygon", "MultiPolygon"):
+        raise ValueError("geo_fence_polygon must be a GeoJSON Polygon or MultiPolygon")
+
+    if geometry_type == "Polygon":
+        polygon_text = _polygon_coords_to_wkt(geojson["coordinates"])
+        return f"MULTIPOLYGON({polygon_text})"
+
+    multipolygon_text = ",".join(_polygon_coords_to_wkt(polygon) for polygon in geojson["coordinates"])
+    return f"MULTIPOLYGON({multipolygon_text})"
+
+
 def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
     """Create a new zone."""
     zone_id = str(uuid.uuid4())
     h3_cells = zone.h3_cells.copy()
-    
+    geo_fence_polygon = None
+
     # If latitude and longitude provided, add the center cell
     if zone.latitude is not None and zone.longitude is not None:
         resolution = zone.h3_resolution or 13
         center_cell = lat_lng_to_h3_cell(zone.latitude, zone.longitude, resolution)
         if center_cell not in h3_cells:
             h3_cells.append(center_cell)
-    
+
+    if zone.geo_fence_polygon is not None:
+        geo_fence_polygon = WKTElement(geojson_to_wkt(zone.geo_fence_polygon), srid=4326)
+
     db_zone = Zone(
         zone_id=zone_id,
         owner_id=owner_id,
@@ -29,6 +54,7 @@ def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
         name=zone.name,
         description=zone.description,
         h3_cells=h3_cells,
+        geo_fence_polygon=geo_fence_polygon,
         parameters=zone.parameters or {},
     )
     db.add(db_zone)
@@ -79,6 +105,11 @@ def update_zone(
     for field, value in update_data.items():
         if field == "zone_type" and value:
             value = ZoneType(value)
+        if field == "geo_fence_polygon":
+            if value is None:
+                setattr(db_zone, field, None)
+                continue
+            value = WKTElement(geojson_to_wkt(value), srid=4326)
         setattr(db_zone, field, value)
     
     db.flush()
