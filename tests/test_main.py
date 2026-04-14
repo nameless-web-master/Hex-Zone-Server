@@ -355,7 +355,6 @@ async def test_qr_join_uses_inviter_zone_id(test_db, override_get_db):
             json={
                 "token": token,
                 "email": "joined@example.com",
-                "zone_id": "different-zone-id-from-request",
                 "first_name": "Joined",
                 "last_name": "User",
                 "password": "SecurePassword123",

@@ -212,7 +212,6 @@ class QRRegistrationUse(BaseModel):
     """QR registration use schema (for joining account)."""
     token: str = Field(..., min_length=1)
     email: EmailStr
-    zone_id: str = Field(..., min_length=1, max_length=100)
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=8)
