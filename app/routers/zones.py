@@ -90,10 +90,20 @@ async def list_zones(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     owner_id: Optional[int] = Query(None, ge=1),
+    zone_id: Optional[str] = Query(None, min_length=1),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List zones for the current owner or a specific owner when provided."""
+    """List zones, or all matching shared zone_id entries when provided."""
+    if zone_id is not None:
+        zones = zone_crud.list_zones_by_zone_id_with_geojson(
+            db,
+            zone_id=zone_id,
+            skip=skip,
+            limit=limit,
+        )
+        return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
+
     if owner_id is not None and owner_id != current_user["user_id"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

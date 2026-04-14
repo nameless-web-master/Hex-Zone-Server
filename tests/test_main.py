@@ -501,3 +501,54 @@ async def test_get_zone_returns_all_matching_zone_id_entries(test_db, override_g
         assert isinstance(zones, list)
         assert len(zones) == 2
         assert all(zone["zone_id"] == "shared-zone-id-value" for zone in zones)
+
+
+@pytest.mark.asyncio
+async def test_list_zones_with_zone_id_query_returns_all_matching_entries(test_db, override_get_db):
+    """GET /zones/?zone_id=... should return all matching zones across owners."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, owner_1_token = await _register_and_login(
+            client,
+            email="query-owner1@example.com",
+            zone_id="shared-zone",
+            first_name="Owner",
+            last_name="One",
+        )
+        _, owner_2_token = await _register_and_login(
+            client,
+            email="query-owner2@example.com",
+            zone_id="shared-zone",
+            first_name="Owner",
+            last_name="Two",
+        )
+
+        payload = {
+            "zone_id": "ZN-80BJC1",
+            "zone_type": "warn",
+            "name": "Operations Zone",
+            "description": "Zone from dashboard console.",
+            "h3_cells": ["862a1008fffffff"],
+        }
+
+        response = await client.post(
+            "/zones/",
+            headers={"Authorization": f"Bearer {owner_1_token}"},
+            json=payload,
+        )
+        assert response.status_code == 201
+
+        response = await client.post(
+            "/zones/",
+            headers={"Authorization": f"Bearer {owner_2_token}"},
+            json=payload,
+        )
+        assert response.status_code == 201
+
+        response = await client.get(
+            "/zones/?zone_id=ZN-80BJC1",
+            headers={"Authorization": f"Bearer {owner_1_token}"},
+        )
+        assert response.status_code == 200
+        zones = response.json()
+        assert len(zones) == 2
+        assert all(zone["zone_id"] == "ZN-80BJC1" for zone in zones)
