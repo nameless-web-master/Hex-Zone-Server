@@ -9,7 +9,6 @@ from app.models.zone import ZoneType
 from app.schemas.schemas import ZoneCreate, ZoneUpdate
 from app.core.h3_utils import lat_lng_to_h3_cell
 from typing import Optional, List, Any
-import uuid
 
 
 def _polygon_coords_to_wkt(polygon_coords: list[list[list[float]]]) -> str:
@@ -41,7 +40,6 @@ def _geojson_to_geometry(geojson: Optional[dict]):
 
 def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
     """Create a new zone."""
-    zone_id = str(uuid.uuid4())
     h3_cells = zone.h3_cells.copy()
     geo_fence_polygon = None
 
@@ -56,7 +54,7 @@ def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
         geo_fence_polygon = _geojson_to_geometry(zone.geo_fence_polygon)
 
     db_zone = Zone(
-        zone_id=zone_id,
+        zone_id=zone.zone_id,
         owner_id=owner_id,
         zone_type=ZoneType(zone.zone_type),
         name=zone.name,

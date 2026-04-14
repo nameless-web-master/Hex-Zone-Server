@@ -150,6 +150,7 @@ class ZoneBase(BaseModel):
 
 class ZoneCreate(ZoneBase):
     """Zone creation schema."""
+    zone_id: str = Field(..., min_length=1, max_length=100)
     h3_cells: List[str] = Field(default_factory=list)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
