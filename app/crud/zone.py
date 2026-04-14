@@ -172,6 +172,30 @@ def list_zones_with_geojson(
     return zones
 
 
+def list_zones_by_zone_id_with_geojson(
+    db: Session,
+    zone_id: str,
+    skip: int = 0,
+    limit: int = 100,
+    active_only: bool = True,
+) -> List[Zone]:
+    """List zones by shared zone_id and include GeoJSON polygon data."""
+    query = select(
+        Zone,
+        func.ST_AsGeoJSON(Zone.geo_fence_polygon).label("geo_fence_polygon"),
+    ).where(Zone.zone_id == zone_id)
+    if active_only:
+        query = query.where(Zone.active == True)
+    query = query.offset(skip).limit(limit)
+    result = db.execute(query).all()
+
+    zones: List[Zone] = []
+    for zone, geojson_text in result:
+        apply_zone_geo_fence_geojson(zone, geojson_text)
+        zones.append(zone)
+    return zones
+
+
 def update_zone(
     db: Session,
     zone_id: str,

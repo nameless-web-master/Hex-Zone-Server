@@ -431,3 +431,73 @@ async def test_zone_messages_visibility_and_filtering(test_db, override_get_db):
         assert "Public from owner 1" in filtered_message_texts
         assert "Private 1 -> 2" in filtered_message_texts
         assert "Public from owner 4" not in filtered_message_texts
+
+
+@pytest.mark.asyncio
+async def test_get_zone_returns_all_matching_zone_id_entries(test_db, override_get_db):
+    """Fetching /zones/{zone_id} should return all matching zones across owners."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, owner_1_token = await _register_and_login(
+            client,
+            email="zones-owner1@example.com",
+            zone_id="shared-zone",
+            first_name="Owner",
+            last_name="One",
+        )
+        _, owner_2_token = await _register_and_login(
+            client,
+            email="zones-owner2@example.com",
+            zone_id="shared-zone",
+            first_name="Owner",
+            last_name="Two",
+        )
+        _, owner_3_token = await _register_and_login(
+            client,
+            email="zones-owner3@example.com",
+            zone_id="other-zone",
+            first_name="Owner",
+            last_name="Three",
+        )
+
+        create_payload = {
+            "zone_id": "shared-zone-id-value",
+            "zone_type": "warn",
+            "name": "Shared Zone",
+            "description": "Shared",
+            "h3_cells": [],
+        }
+
+        response = await client.post(
+            "/zones/",
+            headers={"Authorization": f"Bearer {owner_1_token}"},
+            json=create_payload,
+        )
+        assert response.status_code == 201
+
+        response = await client.post(
+            "/zones/",
+            headers={"Authorization": f"Bearer {owner_2_token}"},
+            json=create_payload,
+        )
+        assert response.status_code == 201
+
+        response = await client.post(
+            "/zones/",
+            headers={"Authorization": f"Bearer {owner_3_token}"},
+            json={
+                **create_payload,
+                "zone_id": "other-zone-id-value",
+                "name": "Other Zone",
+            },
+        )
+        assert response.status_code == 201
+
+        response = await client.get(
+            "/zones/shared-zone-id-value",
+            headers={"Authorization": f"Bearer {owner_1_token}"},
+        )
+        assert response.status_code == 200
+        zones = response.json()
+        assert isinstance(zones, list)
+        assert len(zones) == 2
+        assert all(zone["zone_id"] == "shared-zone-id-value" for zone in zones)

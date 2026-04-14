@@ -97,20 +97,20 @@ async def list_zones(
     return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
 
 
-@router.get("/{zone_id}", response_model=ZoneResponse)
+@router.get("/{zone_id}", response_model=list[ZoneResponse])
 async def get_zone(
     zone_id: str,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get a zone by zone_id."""
-    zone = zone_crud.get_zone_with_geojson(db, zone_id, owner_id=current_user["user_id"])
-    if not zone:
+    """Get all zones by shared zone_id for authenticated users."""
+    zones = zone_crud.list_zones_by_zone_id_with_geojson(db, zone_id)
+    if not zones:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Zone not found",
         )
-    return ZoneResponse.model_validate(zone_crud.zone_to_dict(zone))
+    return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
 
 
 @router.patch("/{zone_id}", response_model=ZoneResponse)
