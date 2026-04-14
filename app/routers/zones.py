@@ -5,14 +5,18 @@ from typing import Optional
 from app.database import get_db
 from app.schemas.schemas import (
     AccountTypeEnum,
+    MessageVisibilityEnum,
     ZoneCreate,
+    ZoneMessageCreate,
+    ZoneMessageResponse,
     ZoneResponse,
     ZoneUpdate,
 )
-from app.crud import zone as zone_crud
 from app.crud import owner as owner_crud
+from app.crud import zone as zone_crud
+from app.crud import zone_message as zone_message_crud
 from app.core.security import get_current_user
-from app.models import Owner
+from app.models.zone_message import MessageVisibility, ZoneMessage
 from app.core.config import settings
 
 router = APIRouter(prefix="/zones", tags=["zones"])
@@ -22,6 +26,18 @@ PRIVATE_ZONE_TYPES = {
     "alert",
     "geofence",
 }
+
+
+def _zone_message_to_response(row: ZoneMessage, zone_uuid: str) -> ZoneMessageResponse:
+    return ZoneMessageResponse(
+        id=row.id,
+        zone_id=zone_uuid,
+        sender_id=row.sender_id,
+        receiver_id=row.receiver_id,
+        visibility=MessageVisibilityEnum(row.visibility.value),
+        message=row.message,
+        created_at=row.created_at,
+    )
 
 
 def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
@@ -173,3 +189,104 @@ async def delete_zone(
             detail="Zone not found",
         )
     db.commit()
+
+
+@router.post(
+    "/{zone_id}/messages",
+    response_model=ZoneMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_zone_message(
+    zone_id: str,
+    body: ZoneMessageCreate,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Post a public or private message in a zone. Sender is the authenticated owner."""
+    zone = zone_crud.get_zone(db, zone_id=zone_id)
+    if not zone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Zone not found",
+        )
+
+    sender_id = current_user["user_id"]
+
+    if body.visibility == MessageVisibilityEnum.PUBLIC:
+        if body.receiver_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Public messages must not include receiver_id",
+            )
+        receiver_id = None
+        vis = MessageVisibility.PUBLIC
+    else:
+        if body.receiver_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Private messages require receiver_id",
+            )
+        receiver_id = body.receiver_id
+        if receiver_id == sender_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Private message receiver_id must differ from sender",
+            )
+        receiver = owner_crud.get_owner(db, receiver_id)
+        if not receiver:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Receiver not found",
+            )
+        vis = MessageVisibility.PRIVATE
+
+    row = zone_message_crud.create_zone_message(
+        db,
+        zone_internal_id=zone.id,
+        sender_id=sender_id,
+        message=body.message,
+        visibility=vis,
+        receiver_id=receiver_id,
+    )
+    db.commit()
+    db.refresh(row)
+    return _zone_message_to_response(row, zone.zone_id)
+
+
+@router.get("/{zone_id}/messages", response_model=list[ZoneMessageResponse])
+async def list_zone_messages(
+    zone_id: str,
+    with_owner_id: Optional[int] = Query(
+        None,
+        ge=1,
+        description="If set, include all public messages plus only private messages between you and this owner",
+    ),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List messages visible to the authenticated owner.
+
+    Always returns every **public** message in the zone, plus **private** messages
+    where you are the sender or receiver. If ``with_owner_id`` is set, private
+    messages are limited to the thread with that owner (public messages are still
+    all included).
+    """
+    zone = zone_crud.get_zone(db, zone_id=zone_id)
+    if not zone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Zone not found",
+        )
+
+    viewer = current_user["user_id"]
+    rows = zone_message_crud.list_zone_messages_for_viewer(
+        db,
+        zone_internal_id=zone.id,
+        viewer_owner_id=viewer,
+        with_owner_id=with_owner_id,
+        skip=skip,
+        limit=limit,
+    )
+    return [_zone_message_to_response(r, zone.zone_id) for r in rows]

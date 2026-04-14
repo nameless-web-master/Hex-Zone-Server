@@ -248,5 +248,42 @@ class H3ConversionResponse(BaseModel):
     resolution: int
 
 
+# ==================== ZONE MESSAGE SCHEMAS ====================
+
+
+class MessageVisibilityEnum(str, Enum):
+    """Message visibility for zone chat."""
+
+    PUBLIC = "public"
+    PRIVATE = "private"
+
+
+class ZoneMessageCreate(BaseModel):
+    """Create a zone message."""
+
+    message: str = Field(..., min_length=1, max_length=16_384)
+    visibility: MessageVisibilityEnum
+    receiver_id: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Required when visibility is private; omitted for public",
+    )
+
+
+class ZoneMessageResponse(BaseModel):
+    """Zone message returned to clients."""
+
+    id: int
+    zone_id: str = Field(..., description="Zone UUID (not the internal DB id)")
+    sender_id: int
+    receiver_id: Optional[int]
+    visibility: MessageVisibilityEnum
+    message: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # Update forward references
 OwnerDetailResponse.model_rebuild()
