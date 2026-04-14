@@ -27,6 +27,7 @@ class ZoneTypeEnum(str, Enum):
 class OwnerBase(BaseModel):
     """Base owner schema."""
     email: EmailStr
+    zone_id: str = Field(..., min_length=1, max_length=100)
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     account_type: AccountTypeEnum = AccountTypeEnum.PRIVATE
@@ -41,6 +42,7 @@ class OwnerCreate(OwnerBase):
 
 class OwnerUpdate(BaseModel):
     """Owner update schema."""
+    zone_id: Optional[str] = Field(None, min_length=1, max_length=100)
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     active: Optional[bool] = None
@@ -209,6 +211,7 @@ class QRRegistrationUse(BaseModel):
     """QR registration use schema (for joining account)."""
     token: str = Field(..., min_length=1)
     email: EmailStr
+    zone_id: str = Field(..., min_length=1, max_length=100)
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=8)

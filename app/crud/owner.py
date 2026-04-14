@@ -15,6 +15,7 @@ def create_owner(db: Session, owner: OwnerCreate) -> Owner:
     api_key = generate_api_key()
     db_owner = Owner(
         email=owner.email,
+        zone_id=owner.zone_id,
         first_name=owner.first_name,
         last_name=owner.last_name,
         account_type=owner.account_type,

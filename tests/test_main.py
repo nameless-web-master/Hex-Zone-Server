@@ -47,16 +47,19 @@ async def test_owner_registration(test_db, override_get_db):
             "/owners/register",
             json={
                 "email": "test@example.com",
+                "zone_id": "zone-user-1",
                 "first_name": "Test",
                 "last_name": "User",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "address": "Test Address 1",
             },
         )
         
         assert response.status_code == 201
         data = response.json()
         assert data["email"] == "test@example.com"
+        assert data["zone_id"] == "zone-user-1"
         assert data["first_name"] == "Test"
         assert data["last_name"] == "User"
         assert data["account_type"] == "private"
@@ -73,10 +76,12 @@ async def test_owner_registration_duplicate_email(test_db, override_get_db):
             "/owners/register",
             json={
                 "email": "test@example.com",
+                "zone_id": "zone-user-1",
                 "first_name": "Test",
                 "last_name": "User",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "address": "Test Address 1",
             },
         )
         
@@ -85,10 +90,12 @@ async def test_owner_registration_duplicate_email(test_db, override_get_db):
             "/owners/register",
             json={
                 "email": "test@example.com",
+                "zone_id": "zone-user-2",
                 "first_name": "Test2",
                 "last_name": "User2",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "address": "Test Address 2",
             },
         )
         
@@ -105,10 +112,12 @@ async def test_owner_login(test_db, override_get_db):
             "/owners/register",
             json={
                 "email": "test@example.com",
+                "zone_id": "zone-user-1",
                 "first_name": "Test",
                 "last_name": "User",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "address": "Test Address 1",
             },
         )
         
@@ -137,10 +146,12 @@ async def test_owner_login_invalid_password(test_db, override_get_db):
             "/owners/register",
             json={
                 "email": "test@example.com",
+                "zone_id": "zone-user-1",
                 "first_name": "Test",
                 "last_name": "User",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "address": "Test Address 1",
             },
         )
         
@@ -284,3 +295,139 @@ async def test_h3_conversion_endpoint(test_db, override_get_db):
         assert "h3_cell_id" in data
         assert "resolution" in data
         assert validate_h3_cell(data["h3_cell_id"])
+
+
+async def _register_and_login(
+    client: AsyncClient,
+    *,
+    email: str,
+    zone_id: str,
+    first_name: str,
+    last_name: str,
+) -> tuple[int, str]:
+    register_response = await client.post(
+        "/owners/register",
+        json={
+            "email": email,
+            "zone_id": zone_id,
+            "first_name": first_name,
+            "last_name": last_name,
+            "account_type": "private",
+            "password": "SecurePassword123",
+            "address": "Test Address 1",
+        },
+    )
+    assert register_response.status_code == 201
+
+    login_response = await client.post(
+        "/owners/login",
+        json={
+            "email": email,
+            "password": "SecurePassword123",
+        },
+    )
+    assert login_response.status_code == 200
+    return login_response.json()["owner_id"], login_response.json()["access_token"]
+
+
+@pytest.mark.asyncio
+async def test_zone_messages_visibility_and_filtering(test_db, override_get_db):
+    """Messages should return public + private related to requester."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        owner_1_id, owner_1_token = await _register_and_login(
+            client,
+            email="owner1@example.com",
+            zone_id="shared-zone",
+            first_name="Owner",
+            last_name="One",
+        )
+        owner_2_id, _ = await _register_and_login(
+            client,
+            email="owner2@example.com",
+            zone_id="shared-zone",
+            first_name="Owner",
+            last_name="Two",
+        )
+        _, owner_3_token = await _register_and_login(
+            client,
+            email="owner3@example.com",
+            zone_id="shared-zone",
+            first_name="Owner",
+            last_name="Three",
+        )
+        _, owner_4_token = await _register_and_login(
+            client,
+            email="owner4@example.com",
+            zone_id="shared-zone",
+            first_name="Owner",
+            last_name="Four",
+        )
+
+        headers_owner_1 = {"Authorization": f"Bearer {owner_1_token}"}
+        headers_owner_3 = {"Authorization": f"Bearer {owner_3_token}"}
+        headers_owner_4 = {"Authorization": f"Bearer {owner_4_token}"}
+
+        response = await client.post(
+            "/messages/",
+            headers=headers_owner_1,
+            json={
+                "message": "Public from owner 1",
+                "visibility": "public",
+            },
+        )
+        assert response.status_code == 201
+
+        response = await client.post(
+            "/messages/",
+            headers=headers_owner_4,
+            json={
+                "message": "Public from owner 4",
+                "visibility": "public",
+            },
+        )
+        assert response.status_code == 201
+
+        response = await client.post(
+            "/messages/",
+            headers=headers_owner_1,
+            json={
+                "message": "Private 1 -> 2",
+                "visibility": "private",
+                "receiver_id": owner_2_id,
+            },
+        )
+        assert response.status_code == 201
+
+        response = await client.post(
+            "/messages/",
+            headers=headers_owner_3,
+            json={
+                "message": "Private 3 -> 2 (not visible to owner 1)",
+                "visibility": "private",
+                "receiver_id": owner_2_id,
+            },
+        )
+        assert response.status_code == 201
+
+        response = await client.get(
+            f"/messages/?owner_id={owner_1_id}",
+            headers=headers_owner_1,
+        )
+        assert response.status_code == 200
+        messages = response.json()
+        message_texts = [entry["message"] for entry in messages]
+
+        assert "Public from owner 1" in message_texts
+        assert "Public from owner 4" in message_texts
+        assert "Private 1 -> 2" in message_texts
+        assert "Private 3 -> 2 (not visible to owner 1)" not in message_texts
+
+        response = await client.get(
+            f"/messages/?owner_id={owner_1_id}&other_owner_id={owner_2_id}",
+            headers=headers_owner_1,
+        )
+        assert response.status_code == 200
+        filtered_message_texts = [entry["message"] for entry in response.json()]
+        assert "Public from owner 1" in filtered_message_texts
+        assert "Private 1 -> 2" in filtered_message_texts
+        assert "Public from owner 4" not in filtered_message_texts

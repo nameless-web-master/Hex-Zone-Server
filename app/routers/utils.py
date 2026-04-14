@@ -120,6 +120,7 @@ async def join_with_qr(
     from app.schemas.schemas import OwnerCreate, AccountTypeEnum
     new_owner_data = OwnerCreate(
         email=qr_data.email,
+        zone_id=qr_data.zone_id,
         first_name=qr_data.first_name,
         last_name=qr_data.last_name,
         password=qr_data.password,

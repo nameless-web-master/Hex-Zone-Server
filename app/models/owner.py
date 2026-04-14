@@ -18,6 +18,7 @@ class Owner(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
+    zone_id = Column(String(100), nullable=False, index=True)
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     account_type = Column(Enum(AccountType), nullable=False, default=AccountType.PRIVATE)
@@ -34,9 +35,21 @@ class Owner(Base):
     devices = relationship("Device", back_populates="owner", cascade="all, delete-orphan")
     zones = relationship("Zone", back_populates="owner", cascade="all, delete-orphan")
     qr_registrations = relationship("QRRegistration", back_populates="owner", cascade="all, delete-orphan")
+    sent_messages = relationship(
+        "Message",
+        foreign_keys="Message.sender_id",
+        back_populates="sender",
+        cascade="all, delete-orphan",
+    )
+    received_messages = relationship(
+        "Message",
+        foreign_keys="Message.receiver_id",
+        back_populates="receiver",
+    )
 
     __table_args__ = (
         Index("ix_owner_email", "email"),
+        Index("ix_owner_zone_id", "zone_id"),
         Index("ix_owner_api_key", "api_key"),
     )
 

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 from app.core.config import settings
 from app.database import get_db, init_db
-from app.routers import owners, devices, zones, utils
+from app.routers import owners, devices, zones, utils, messages
 
 logging.basicConfig(level=logging.INFO)
 
@@ -55,6 +55,7 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
 app.include_router(owners.router)
 app.include_router(devices.router)
 app.include_router(zones.router)
+app.include_router(messages.router)
 app.include_router(utils.router)
 
 
