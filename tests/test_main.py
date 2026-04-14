@@ -331,6 +331,43 @@ async def _register_and_login(
 
 
 @pytest.mark.asyncio
+async def test_qr_join_uses_inviter_zone_id(test_db, override_get_db):
+    """QR join should always inherit inviter zone_id."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, inviter_token = await _register_and_login(
+            client,
+            email="inviter@example.com",
+            zone_id="inviter-zone-id",
+            first_name="Invite",
+            last_name="Owner",
+        )
+
+        generate_response = await client.post(
+            "/utils/qr/generate",
+            headers={"Authorization": f"Bearer {inviter_token}"},
+            json={"expires_in_hours": 24},
+        )
+        assert generate_response.status_code == 200
+        token = generate_response.json()["token"]
+
+        join_response = await client.post(
+            "/utils/qr/join",
+            json={
+                "token": token,
+                "email": "joined@example.com",
+                "zone_id": "different-zone-id-from-request",
+                "first_name": "Joined",
+                "last_name": "User",
+                "password": "SecurePassword123",
+                "address": "Joined Address",
+            },
+        )
+        assert join_response.status_code == 200
+        joined_owner = join_response.json()
+        assert joined_owner["zone_id"] == "inviter-zone-id"
+
+
+@pytest.mark.asyncio
 async def test_zone_messages_visibility_and_filtering(test_db, override_get_db):
     """Messages should return public + private related to requester."""
     async with AsyncClient(app=app, base_url="http://test") as client:
