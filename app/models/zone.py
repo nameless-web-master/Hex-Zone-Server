@@ -43,7 +43,7 @@ class Zone(Base):
     __tablename__ = "zones"
 
     id = Column(Integer, primary_key=True, index=True)
-    zone_id = Column(String(36), unique=True, nullable=False, index=True)  # UUID or custom ID
+    zone_id = Column(String(36), nullable=False, index=True)  # UUID or custom ID (shared across owners)
     
     # Owner reference
     owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True)
