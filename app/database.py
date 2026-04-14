@@ -36,8 +36,25 @@ def get_db() -> Session:
 def init_db():
     """Initialize database tables."""
     with engine.begin() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
+        if engine.dialect.name == "postgresql":
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
     Base.metadata.create_all(bind=engine)
+
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            # Backward-compatible schema patch for older deployments missing owners.zone_id.
+            conn.execute(text("ALTER TABLE owners ADD COLUMN IF NOT EXISTS zone_id VARCHAR(100);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_owner_zone_id ON owners (zone_id);"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE owners
+                    SET zone_id = CONCAT('owner-', id::text)
+                    WHERE zone_id IS NULL OR zone_id = '';
+                    """
+                )
+            )
+            conn.execute(text("ALTER TABLE owners ALTER COLUMN zone_id SET NOT NULL;"))
 
 
 def drop_db():
