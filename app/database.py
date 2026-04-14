@@ -59,6 +59,8 @@ def init_db():
             # Allow duplicate zone_id values across different owners.
             conn.execute(text("ALTER TABLE zones DROP CONSTRAINT IF EXISTS zones_zone_id_key;"))
             conn.execute(text("DROP INDEX IF EXISTS zones_zone_id_key;"))
+            conn.execute(text("DROP INDEX IF EXISTS ix_zones_zone_id;"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_zones_zone_id ON zones (zone_id);"))
 
 
 def drop_db():

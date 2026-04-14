@@ -1,6 +1,7 @@
 """Router for Zone endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import Optional
 from app.database import get_db
 from app.schemas.schemas import (
@@ -62,6 +63,17 @@ async def create_zone(
         db_zone = zone_crud.create_zone(db, current_user["user_id"], zone)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except IntegrityError as exc:
+        db.rollback()
+        if "zone_id" in str(exc).lower() and "unique" in str(exc).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Zone ID already exists",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid zone payload",
+        )
 
     db.commit()
     created_zone = zone_crud.get_zone_with_geojson(db, db_zone.zone_id, owner_id=current_user["user_id"])
