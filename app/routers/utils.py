@@ -1,5 +1,4 @@
 """Router for utility endpoints."""
-# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -57,7 +56,7 @@ async def generate_qr_registration(
         )
     
     # Only Private accounts can generate QR codes
-    if owner.account_type != "private":
+    if owner.account_type.value != "private":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only Private accounts can generate QR registration codes",
@@ -103,7 +102,7 @@ async def join_with_qr(
     
     # Ensure this token belongs to a private account owner
     owner = owner_crud.get_owner(db, qr.owner_id)
-    if not owner or owner.account_type != "private":
+    if not owner or owner.account_type.value != "private":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid QR registration token",

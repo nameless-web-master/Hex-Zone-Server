@@ -1,9 +1,15 @@
 """Owner/User model."""
-# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
+import enum
 from app.database import Base
+
+
+class AccountType(str, enum.Enum):
+    """Account type enumeration."""
+    PRIVATE = "private"
+    EXCLUSIVE = "exclusive"
 
 
 class Owner(Base):
@@ -15,7 +21,7 @@ class Owner(Base):
     zone_id = Column(String(100), nullable=False, index=True)
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
-    account_type = Column(String(32), nullable=False, default="private")
+    account_type = Column(Enum(AccountType), nullable=False, default=AccountType.PRIVATE)
     hashed_password = Column(String(255), nullable=False)
     api_key = Column(String(255), unique=True, nullable=False, index=True)
     phone = Column(String(20), nullable=True)
@@ -28,7 +34,6 @@ class Owner(Base):
     # Relationships
     devices = relationship("Device", back_populates="owner", cascade="all, delete-orphan")
     zones = relationship("Zone", back_populates="owner", cascade="all, delete-orphan")
-    events = relationship("Event", back_populates="owner", cascade="all, delete-orphan")
     qr_registrations = relationship("QRRegistration", back_populates="owner", cascade="all, delete-orphan")
     sent_messages = relationship(
         "Message",

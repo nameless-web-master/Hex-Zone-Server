@@ -1,11 +1,8 @@
 """Router for Owner/User endpoints."""
-# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func, select
 from app.database import get_db
 from app.schemas.schemas import (
-    AccountTypeEnum,
     OwnerCreate,
     OwnerResponse,
     OwnerUpdate,
@@ -15,7 +12,6 @@ from app.schemas.schemas import (
 )
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user, verify_password, create_access_token
-from app.models import Owner
 from datetime import timedelta
 
 router = APIRouter(prefix="/owners", tags=["owners"])
@@ -34,20 +30,6 @@ async def register_owner(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         )
-
-    # Guard accounts are single-user accounts.
-    if owner.account_type == AccountTypeEnum.GUARD:
-        same_zone_guard_count = db.execute(
-            select(func.count()).select_from(Owner).where(
-                Owner.zone_id == owner.zone_id,
-                Owner.account_type == AccountTypeEnum.GUARD.value,
-            )
-        ).scalar_one()
-        if same_zone_guard_count > 0:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Guard accounts are single-user; this guard zone is already assigned",
-            )
     
     # Create owner
     db_owner = owner_crud.create_owner(db, owner)

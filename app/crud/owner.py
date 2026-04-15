@@ -1,5 +1,4 @@
 """CRUD operations for Owner/User."""
-# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -19,7 +18,7 @@ def create_owner(db: Session, owner: OwnerCreate) -> Owner:
         zone_id=owner.zone_id,
         first_name=owner.first_name,
         last_name=owner.last_name,
-        account_type=owner.account_type.value,
+        account_type=owner.account_type,
         hashed_password=get_password_hash(owner.password),
         api_key=api_key,
         phone=owner.phone,

@@ -1,16 +1,13 @@
 """Main FastAPI application."""
-# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
-import logging
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from sqlalchemy import text
 from app.core.config import settings
-from app.database import get_db, init_db
-from app.routers import owners, devices, zones, utils, messages, events
-
-logging.basicConfig(level=logging.INFO)
+from app.database import init_db
+from app.middleware.error_handlers import http_exception_handler, unhandled_exception_handler
+from app.routes import auth, owners, devices, zones, messages, members, ws
+from app.routers import utils
+from app.utils.api_response import success_response
 
 # Lifespan context
 @asynccontextmanager
@@ -44,37 +41,34 @@ app.add_middleware(
     max_age=86400,
 )
 
-@app.exception_handler(Exception)
-async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-    logging.exception("Unhandled error processing request %s %s", request.method, request.url)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"},
-    )
+app.add_exception_handler(Exception, unhandled_exception_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
 
 # Include routers
+app.include_router(auth.router)
 app.include_router(owners.router)
 app.include_router(devices.router)
 app.include_router(zones.router)
 app.include_router(messages.router)
-app.include_router(events.router)
+app.include_router(members.router)
+app.include_router(ws.router)
 app.include_router(utils.router)
 
 
 @app.get("/", tags=["health"])
 async def root():
     """Root endpoint."""
-    return {
+    return success_response({
         "message": "Zone Weaver API",
         "version": settings.API_VERSION,
         "docs": "/docs",
-    }
+    })
 
 
 @app.get("/health", tags=["health"])
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy"}
+    return success_response({"service": "healthy"})
 
 
 if __name__ == "__main__":
