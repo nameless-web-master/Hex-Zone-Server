@@ -23,6 +23,16 @@ CONTRACT_TO_MODEL_ZONE_TYPE = {
 MODEL_TO_CONTRACT_ZONE_TYPE = {value: key for key, value in CONTRACT_TO_MODEL_ZONE_TYPE.items()}
 
 
+def _extract_geojson_polygon(geometry: object) -> dict | None:
+    """Return GeoJSON Polygon/MultiPolygon dict, otherwise None."""
+    if not isinstance(geometry, dict):
+        return None
+    geometry_type = geometry.get("type")
+    if geometry_type in {"Polygon", "MultiPolygon"}:
+        return geometry
+    return None
+
+
 def _serialize_zone(zone: Zone) -> dict:
     contract_type = (zone.parameters or {}).get("contractType")
     return {
@@ -43,6 +53,9 @@ def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
     if zone_type not in CONTRACT_TO_MODEL_ZONE_TYPE:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unsupported zone type")
 
+    geometry = payload.get("geometry", {})
+    geo_fence_polygon = _extract_geojson_polygon(geometry)
+
     zone = Zone(
         zone_id=payload.get("id") or f"{owner.id}-{count + 1}",
         owner_id=owner.id,
@@ -50,10 +63,11 @@ def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
         name=payload["name"],
         parameters={
             "contractType": zone_type,
-            "geometry": payload.get("geometry", {}),
+            "geometry": geometry,
             "config": payload.get("config", {}),
         },
         h3_cells=payload.get("config", {}).get("h3Cells", []),
+        geo_fence_polygon=geo_fence_polygon,
     )
     db.add(zone)
     db.flush()
@@ -79,7 +93,9 @@ def update_zone(db: Session, owner: Owner, zone_id: str, payload: dict) -> dict:
         zone.zone_type = CONTRACT_TO_MODEL_ZONE_TYPE[zone_type]
     params = zone.parameters or {}
     if "geometry" in payload:
-        params["geometry"] = payload.get("geometry", {})
+        geometry = payload.get("geometry", {})
+        params["geometry"] = geometry
+        zone.geo_fence_polygon = _extract_geojson_polygon(geometry)
     if "config" in payload:
         params["config"] = payload.get("config", {})
     if payload.get("type"):

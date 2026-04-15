@@ -633,3 +633,13 @@ async def test_contract_create_zone_accepts_internal_zone_payload_shape(test_db,
         assert body["data"]["id"] == "ZN-76F7LJ"
         assert body["data"]["name"] == "Operations Zone"
         assert body["data"]["type"] in {"polygon", "geofence"}
+
+        from app.models import Zone
+
+        created = (
+            test_db.query(Zone)
+            .filter(Zone.owner_id.isnot(None), Zone.zone_id == "ZN-76F7LJ")
+            .first()
+        )
+        assert created is not None
+        assert created.geo_fence_polygon is not None
