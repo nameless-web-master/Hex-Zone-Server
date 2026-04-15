@@ -588,3 +588,48 @@ async def test_list_zones_with_zone_id_query_returns_all_matching_entries(test_d
         zones = response.json()
         assert len(zones) == 2
         assert all(zone["zone_id"] == "ZN-80BJC1" for zone in zones)
+
+
+@pytest.mark.asyncio
+async def test_contract_create_zone_accepts_internal_zone_payload_shape(test_db, override_get_db):
+    """Contract /zones should accept dashboard/internal style zone payload keys."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, owner_token = await _register_and_login(
+            client,
+            email="contract-zone-owner@example.com",
+            zone_id="shared-zone",
+            first_name="Contract",
+            last_name="Owner",
+        )
+
+        payload = {
+            "zone_id": "ZN-76F7LJ",
+            "name": "Operations Zone",
+            "description": "Zone from dashboard console.",
+            "zone_type": "geofence",
+            "h3_cells": ["862a10777ffffff"],
+            "geo_fence_polygon": {
+                "type": "MultiPolygon",
+                "coordinates": [[[[
+                    -73.91017913818361, 40.836934333793835
+                ], [
+                    -73.84323120117189, 40.74570425662038
+                ], [
+                    -73.99635314941408, 40.76884853115124
+                ], [
+                    -73.91017913818361, 40.836934333793835
+                ]]]],
+            },
+        }
+
+        response = await client.post(
+            "/zones",
+            headers={"Authorization": f"Bearer {owner_token}"},
+            json=payload,
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["status"] == "success"
+        assert body["data"]["id"] == "ZN-76F7LJ"
+        assert body["data"]["name"] == "Operations Zone"
+        assert body["data"]["type"] in {"polygon", "geofence"}

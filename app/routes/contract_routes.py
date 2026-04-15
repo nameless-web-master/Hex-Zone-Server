@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.controllers import contract_controllers as controllers
@@ -32,9 +32,38 @@ class RegisterRequest(BaseModel):
 
 class ZoneUpsertRequest(BaseModel):
     name: str
-    type: Literal["polygon", "circle", "grid", "dynamic", "proximity", "object"]
+    type: Literal["polygon", "circle", "grid", "dynamic", "proximity", "object", "geofence", "warn", "alert", "restricted", "custom_1", "custom_2"]
     geometry: dict[str, Any] = Field(default_factory=dict)
     config: dict[str, Any] = Field(default_factory=dict)
+    id: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_alias_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+
+        if payload.get("type") is None and payload.get("zone_type") is not None:
+            payload["type"] = payload["zone_type"]
+
+        if payload.get("id") is None and payload.get("zone_id") is not None:
+            payload["id"] = payload["zone_id"]
+
+        if payload.get("geometry") is None and payload.get("geo_fence_polygon") is not None:
+            payload["geometry"] = payload["geo_fence_polygon"]
+
+        if "config" not in payload:
+            payload["config"] = {}
+        if (
+            isinstance(payload.get("config"), dict)
+            and "h3Cells" not in payload["config"]
+            and payload.get("h3_cells") is not None
+        ):
+            payload["config"]["h3Cells"] = payload["h3_cells"]
+
+        return payload
 
 
 class MessageCreateRequest(BaseModel):

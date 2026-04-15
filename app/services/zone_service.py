@@ -7,11 +7,17 @@ from app.models.zone import ZoneType
 
 CONTRACT_TO_MODEL_ZONE_TYPE = {
     "polygon": ZoneType.GEOFENCE,
+    "geofence": ZoneType.GEOFENCE,
     "circle": ZoneType.WARN,
+    "warn": ZoneType.WARN,
     "grid": ZoneType.ALERT,
+    "alert": ZoneType.ALERT,
     "dynamic": ZoneType.CUSTOM_1,
+    "custom_1": ZoneType.CUSTOM_1,
     "proximity": ZoneType.RESTRICTED,
+    "restricted": ZoneType.RESTRICTED,
     "object": ZoneType.CUSTOM_2,
+    "custom_2": ZoneType.CUSTOM_2,
 }
 
 MODEL_TO_CONTRACT_ZONE_TYPE = {value: key for key, value in CONTRACT_TO_MODEL_ZONE_TYPE.items()}
