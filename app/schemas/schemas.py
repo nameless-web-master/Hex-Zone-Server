@@ -1,6 +1,6 @@
 """Pydantic schemas for request/response validation."""
 # UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import date, datetime, time
 from enum import Enum
@@ -37,6 +37,16 @@ class OwnerBase(BaseModel):
     account_type: AccountTypeEnum = AccountTypeEnum.PRIVATE
     address: str = Field(..., min_length=1, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
+
+    @field_validator("account_type", mode="before")
+    @classmethod
+    def normalize_account_type(cls, value):
+        """Accept legacy uppercase account type values from old deployments."""
+        if isinstance(value, str):
+            lowered = value.lower()
+            if lowered in {item.value for item in AccountTypeEnum}:
+                return lowered
+        return value
 
 
 class OwnerCreate(OwnerBase):
@@ -151,6 +161,25 @@ class ZoneBase(BaseModel):
     zone_type: ZoneTypeEnum
     parameters: Optional[dict] = None
 
+    @field_validator("zone_type", mode="before")
+    @classmethod
+    def normalize_zone_type(cls, value):
+        """Accept known legacy zone type values while returning spec-compliant values."""
+        if not isinstance(value, str):
+            return value
+
+        # Legacy values seen in old DB rows / enum serialization.
+        legacy_map = {
+            "GEOFENCE": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+            "geofence": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+            "geo_fence": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+            "geo_fence_zoning": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+        }
+        mapped = legacy_map.get(value)
+        if mapped is not None:
+            return mapped
+        return value
+
 
 class ZoneCreate(ZoneBase):
     """Zone creation schema."""
@@ -172,6 +201,20 @@ class ZoneUpdate(BaseModel):
     geo_fence_polygon: Optional[dict] = None
     active: Optional[bool] = None
 
+    @field_validator("zone_type", mode="before")
+    @classmethod
+    def normalize_zone_type(cls, value):
+        """Accept known legacy zone type values while returning spec-compliant values."""
+        if not isinstance(value, str):
+            return value
+        legacy_map = {
+            "GEOFENCE": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+            "geofence": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+            "geo_fence": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+            "geo_fence_zoning": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+        }
+        return legacy_map.get(value, value)
+
 
 class ZoneResponse(BaseModel):
     """Zone response schema."""
@@ -187,6 +230,20 @@ class ZoneResponse(BaseModel):
     active: bool
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("zone_type", mode="before")
+    @classmethod
+    def normalize_zone_type(cls, value):
+        """Accept known legacy zone type values while returning spec-compliant values."""
+        if not isinstance(value, str):
+            return value
+        legacy_map = {
+            "GEOFENCE": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+            "geofence": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+            "geo_fence": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+            "geo_fence_zoning": ZoneTypeEnum.GEO_FENCE_ZONING.value,
+        }
+        return legacy_map.get(value, value)
 
     class Config:
         from_attributes = True
