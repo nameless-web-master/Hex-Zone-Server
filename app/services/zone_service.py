@@ -1,48 +1,90 @@
-"""Zone service."""
+"""Zone services with contract type mappings and constraints."""
 from fastapi import HTTPException, status
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from app.core.config import settings
-from app.crud import owner as owner_crud
-from app.crud import zone as zone_crud
-from app.schemas.schemas import AccountTypeEnum, ZoneCreate, ZoneUpdate
 
-PRIVATE_ZONE_TYPES = {"warn", "alert", "geofence", "polygon", "circle", "grid", "dynamic", "proximity", "object"}
+from app.models import Owner, Zone
+from app.models.zone import ZoneType
 
+CONTRACT_TO_MODEL_ZONE_TYPE = {
+    "polygon": ZoneType.GEOFENCE,
+    "circle": ZoneType.WARN,
+    "grid": ZoneType.ALERT,
+    "dynamic": ZoneType.CUSTOM_1,
+    "proximity": ZoneType.RESTRICTED,
+    "object": ZoneType.CUSTOM_2,
+}
 
-def _validate_owner_zone_type(db: Session, owner_id: int, zone_type: str) -> None:
-    owner = owner_crud.get_owner(db, owner_id)
-    if not owner:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Owner not found")
-    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and zone_type not in PRIVATE_ZONE_TYPES:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Zone type not allowed for account")
-
-
-def create_zone(db: Session, owner_id: int, payload: ZoneCreate):
-    """Create zone while enforcing per-user limit."""
-    _validate_owner_zone_type(db, owner_id, str(payload.zone_type))
-    if zone_crud.count_zones(db, owner_id) >= settings.MAX_ZONES_PER_USER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Maximum {settings.MAX_ZONES_PER_USER} zones per user reached",
-        )
-    try:
-        zone = zone_crud.create_zone(db, owner_id, payload)
-        db.commit()
-        return zone_crud.get_zone_with_geojson(db, zone.zone_id, owner_id=owner_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Zone ID already exists")
+MODEL_TO_CONTRACT_ZONE_TYPE = {value: key for key, value in CONTRACT_TO_MODEL_ZONE_TYPE.items()}
 
 
-def update_zone(db: Session, owner_id: int, zone_id: str, payload: ZoneUpdate):
-    """Update zone for owner."""
-    if payload.zone_type is not None:
-        _validate_owner_zone_type(db, owner_id, str(payload.zone_type))
-    zone = zone_crud.update_zone(db, zone_id, payload, owner_id=owner_id)
+def _serialize_zone(zone: Zone) -> dict:
+    contract_type = (zone.parameters or {}).get("contractType")
+    return {
+        "id": zone.zone_id,
+        "name": zone.name,
+        "type": contract_type or MODEL_TO_CONTRACT_ZONE_TYPE.get(zone.zone_type, "dynamic"),
+        "geometry": (zone.parameters or {}).get("geometry", {}),
+        "config": (zone.parameters or {}).get("config", {}),
+    }
+
+
+def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
+    count = db.query(Zone).filter(Zone.owner_id == owner.id).count()
+    if count >= 3:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Maximum 3 zones per user")
+
+    zone_type = payload["type"]
+    if zone_type not in CONTRACT_TO_MODEL_ZONE_TYPE:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unsupported zone type")
+
+    zone = Zone(
+        zone_id=payload.get("id") or f"{owner.id}-{count + 1}",
+        owner_id=owner.id,
+        zone_type=CONTRACT_TO_MODEL_ZONE_TYPE[zone_type],
+        name=payload["name"],
+        parameters={
+            "contractType": zone_type,
+            "geometry": payload.get("geometry", {}),
+            "config": payload.get("config", {}),
+        },
+        h3_cells=payload.get("config", {}).get("h3Cells", []),
+    )
+    db.add(zone)
+    db.flush()
+    db.refresh(zone)
+    return _serialize_zone(zone)
+
+
+def list_zones(db: Session, owner: Owner) -> list[dict]:
+    zones = db.query(Zone).filter(Zone.owner_id == owner.id, Zone.active.is_(True)).all()
+    return [_serialize_zone(zone) for zone in zones]
+
+
+def update_zone(db: Session, owner: Owner, zone_id: str, payload: dict) -> dict:
+    zone = db.query(Zone).filter(Zone.owner_id == owner.id, Zone.zone_id == zone_id).first()
     if not zone:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Zone not found")
-    db.commit()
-    return zone_crud.get_zone_with_geojson(db, zone_id, owner_id=owner_id)
+    if payload.get("name"):
+        zone.name = payload["name"]
+    if payload.get("type"):
+        zone_type = payload["type"]
+        if zone_type not in CONTRACT_TO_MODEL_ZONE_TYPE:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unsupported zone type")
+        zone.zone_type = CONTRACT_TO_MODEL_ZONE_TYPE[zone_type]
+    params = zone.parameters or {}
+    if "geometry" in payload:
+        params["geometry"] = payload.get("geometry", {})
+    if "config" in payload:
+        params["config"] = payload.get("config", {})
+    if payload.get("type"):
+        params["contractType"] = payload["type"]
+    zone.parameters = params
+    db.flush()
+    return _serialize_zone(zone)
+
+
+def delete_zone(db: Session, owner: Owner, zone_id: str) -> None:
+    zone = db.query(Zone).filter(Zone.owner_id == owner.id, Zone.zone_id == zone_id).first()
+    if not zone:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Zone not found")
+    db.delete(zone)

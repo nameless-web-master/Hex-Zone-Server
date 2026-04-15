@@ -36,12 +36,6 @@ class ZoneType(str, enum.Enum):
     RESTRICTED = "restricted"
     CUSTOM_1 = "custom_1"
     CUSTOM_2 = "custom_2"
-    POLYGON = "polygon"
-    CIRCLE = "circle"
-    GRID = "grid"
-    DYNAMIC = "dynamic"
-    PROXIMITY = "proximity"
-    OBJECT = "object"
 
 
 class Zone(Base):

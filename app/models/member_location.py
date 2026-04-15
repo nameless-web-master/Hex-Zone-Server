@@ -1,22 +1,22 @@
-"""Member location model."""
+"""Member location snapshot model."""
 from datetime import datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
-from geoalchemy2 import Geometry
+
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer
+from sqlalchemy.orm import relationship
+
 from app.database import Base
 
 
 class MemberLocation(Base):
-    """Stores latest owner/member location for geospatial evaluation."""
-
     __tablename__ = "member_locations"
 
-    id = Column(Integer, primary_key=True, index=True)
-    owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, unique=True)
-    point = Column(Geometry("POINT", srid=4326), nullable=False)
-    h3_cell_id = Column(String(50), nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False, onupdate=datetime.utcnow)
+    owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), primary_key=True)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    owner = relationship("Owner")
 
     __table_args__ = (
-        Index("ix_member_locations_owner", "owner_id"),
-        Index("ix_member_locations_h3_cell", "h3_cell_id"),
+        Index("ix_member_locations_updated_at", "updated_at"),
     )

@@ -1,18 +1,10 @@
-"""API response envelope helpers."""
-from fastapi.responses import JSONResponse
+"""Standard API response helpers."""
+from typing import Any
 
 
-def success_response(data, status_code: int = 200) -> JSONResponse:
-    """Return a success response using the API envelope."""
-    return JSONResponse(
-        status_code=status_code,
-        content={"status": "success", "data": data, "error": None},
-    )
+def success_response(data: Any) -> dict[str, Any]:
+    return {"status": "success", "data": data, "error": None}
 
 
-def error_response(message: str, status_code: int) -> JSONResponse:
-    """Return an error response using the API envelope."""
-    return JSONResponse(
-        status_code=status_code,
-        content={"status": "error", "data": {}, "error": message},
-    )
+def error_response(message: str, data: Any | None = None) -> dict[str, Any]:
+    return {"status": "error", "data": data or {}, "error": {"message": message}}

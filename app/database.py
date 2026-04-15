@@ -35,6 +35,8 @@ def get_db() -> Session:
 
 def init_db():
     """Initialize database tables."""
+    import app.models  # noqa: F401
+
     with engine.begin() as conn:
         if engine.dialect.name == "postgresql":
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))

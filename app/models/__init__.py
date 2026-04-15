@@ -5,6 +5,16 @@ from app.models.zone import Zone
 from app.models.qr_registration import QRRegistration
 from app.models.message import Message
 from app.models.member_location import MemberLocation
-from app.models.device_token import DeviceToken
+from app.models.push_token import PushToken
+from app.models.zone_message_event import ZoneMessageEvent
 
-__all__ = ["Owner", "Device", "Zone", "QRRegistration", "Message", "MemberLocation", "DeviceToken"]
+__all__ = [
+    "Owner",
+    "Device",
+    "Zone",
+    "QRRegistration",
+    "Message",
+    "MemberLocation",
+    "PushToken",
+    "ZoneMessageEvent",
+]
