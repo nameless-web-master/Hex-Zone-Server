@@ -1,8 +1,9 @@
 """Router for zone message endpoints."""
+# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.schemas.schemas import MessageVisibilityEnum, ZoneMessageCreate, ZoneMessageResponse
+from app.schemas.schemas import MessageTypeEnum, ZoneMessageCreate, ZoneMessageResponse
 from app.crud import message as message_crud
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user
@@ -24,16 +25,16 @@ async def create_message(
             detail="Sender owner not found",
         )
 
-    if payload.visibility == MessageVisibilityEnum.PRIVATE and payload.receiver_id is None:
+    if payload.message_type == MessageTypeEnum.PRIVATE and payload.receiver_id is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="receiver_id is required for private messages",
+            detail="receiver_id is required when message_type is Private",
         )
 
-    if payload.visibility == MessageVisibilityEnum.PUBLIC and payload.receiver_id is not None:
+    if payload.message_type != MessageTypeEnum.PRIVATE and payload.receiver_id is not None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="receiver_id must be omitted for public messages",
+            detail="receiver_id must be omitted for non-private message types",
         )
 
     if payload.receiver_id is not None:
@@ -57,7 +58,7 @@ async def create_message(
         zone_id=sender.zone_id,
         sender_id=db_message.sender_id,
         receiver_id=db_message.receiver_id,
-        visibility=db_message.visibility,
+        message_type=db_message.message_type,
         message=db_message.message,
         created_at=db_message.created_at,
     )
@@ -112,7 +113,7 @@ async def list_messages(
             zone_id=owner.zone_id,
             sender_id=message.sender_id,
             receiver_id=message.receiver_id,
-            visibility=message.visibility,
+            message_type=message.message_type,
             message=message.message,
             created_at=message.created_at,
         )

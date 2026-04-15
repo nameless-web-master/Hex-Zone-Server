@@ -1,9 +1,9 @@
 """Zone model."""
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Index, JSON, Text, Enum, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Index, JSON, Text, Boolean
+# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 from sqlalchemy.orm import relationship, validates
 from geoalchemy2 import Geometry
 from datetime import datetime
-import enum
 from app.database import Base
 
 
@@ -27,17 +27,6 @@ def geojson_to_wkt(geojson: dict) -> str:
     return f"MULTIPOLYGON({multipolygon_text})"
 
 
-class ZoneType(str, enum.Enum):
-    """Zone type enumeration."""
-    WARN = "warn"
-    ALERT = "alert"
-    GEOFENCE = "geofence"
-    EMERGENCY = "emergency"
-    RESTRICTED = "restricted"
-    CUSTOM_1 = "custom_1"
-    CUSTOM_2 = "custom_2"
-
-
 class Zone(Base):
     """Zone model."""
     __tablename__ = "zones"
@@ -49,7 +38,7 @@ class Zone(Base):
     owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Zone configuration
-    zone_type = Column(Enum(ZoneType), nullable=False)
+    zone_type = Column(String(64), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     
@@ -69,6 +58,7 @@ class Zone(Base):
 
     # Relationships
     owner = relationship("Owner", back_populates="zones")
+    events = relationship("Event", back_populates="zone", cascade="all, delete-orphan")
 
     @validates("geo_fence_polygon")
     def validate_geo_fence_polygon(self, key, value):

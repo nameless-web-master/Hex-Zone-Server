@@ -1,4 +1,5 @@
 """Main FastAPI application."""
+# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 import logging
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +8,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 from app.core.config import settings
 from app.database import get_db, init_db
-from app.routers import owners, devices, zones, utils, messages
+from app.routers import owners, devices, zones, utils, messages, events
 
 logging.basicConfig(level=logging.INFO)
 
@@ -56,6 +57,7 @@ app.include_router(owners.router)
 app.include_router(devices.router)
 app.include_router(zones.router)
 app.include_router(messages.router)
+app.include_router(events.router)
 app.include_router(utils.router)
 
 

@@ -1,7 +1,8 @@
 """Pydantic schemas for request/response validation."""
+# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import date, datetime, time
 from enum import Enum
 
 
@@ -9,17 +10,20 @@ class AccountTypeEnum(str, Enum):
     """Account type enum."""
     PRIVATE = "private"
     EXCLUSIVE = "exclusive"
+    GUARD = "guard"
 
 
 class ZoneTypeEnum(str, Enum):
     """Zone type enum."""
-    WARN = "warn"
-    ALERT = "alert"
-    GEOFENCE = "geofence"
-    EMERGENCY = "emergency"
-    RESTRICTED = "restricted"
-    CUSTOM_1 = "custom_1"
-    CUSTOM_2 = "custom_2"
+    H3_HEX_GRID_ZONING = "h3_hex_grid_zoning"
+    ZONE_MATCHING_COMMUNAL_ID = "zone_matching_communal_id"
+    ZONE_MATCHING_GOVERNMENTAL_LOCAL_CODE = "zone_matching_governmental_local_code"
+    OBJECT_ZONING = "object_zoning"
+    GRID_ZONING = "grid_zoning"
+    GEO_FENCE_ZONING = "geo_fence_zoning"
+    PROXIMITY_TO_SOURCE_ZONING = "proximity_to_source_zoning"
+    DYNAMIC_SIZE_ZONING = "dynamic_size_zoning"
+    NO_ZONING = "no_zoning"
 
 
 # ==================== OWNER SCHEMAS ====================
@@ -254,22 +258,28 @@ class H3ConversionResponse(BaseModel):
 # ==================== ZONE MESSAGE SCHEMAS ====================
 
 
-class MessageVisibilityEnum(str, Enum):
-    """Message visibility for zone chat."""
+class MessageTypeEnum(str, Enum):
+    """Supported message types."""
 
-    PUBLIC = "public"
-    PRIVATE = "private"
+    PA = "PA"
+    PRIVATE = "Private"
+    SERVICE = "Service"
+    WELLNESS = "Wellness"
+    PANIC = "Panic"
+    NS_PANIC = "NS Panic"
+    UNKNOWN = "Unknown"
+    SENSOR = "Sensor"
 
 
 class ZoneMessageCreate(BaseModel):
     """Create a zone message."""
 
     message: str = Field(..., min_length=1, max_length=16_384)
-    visibility: MessageVisibilityEnum
+    message_type: MessageTypeEnum = MessageTypeEnum.UNKNOWN
     receiver_id: Optional[int] = Field(
         None,
         ge=1,
-        description="Required when visibility is private; omitted for public",
+        description="Required when message_type is Private; omitted for non-private message types",
     )
 
 
@@ -280,9 +290,49 @@ class ZoneMessageResponse(BaseModel):
     zone_id: str = Field(..., description="Zone UUID (not the internal DB id)")
     sender_id: int
     receiver_id: Optional[int]
-    visibility: MessageVisibilityEnum
+    message_type: MessageTypeEnum
     message: str
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class EventBase(BaseModel):
+    """Base event schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    date: date
+    start_time: time
+    end_time: time
+    event_id: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    zone_id: str = Field(..., min_length=1, max_length=100)
+
+
+class EventCreate(EventBase):
+    """Create event schema."""
+
+
+class EventUpdate(BaseModel):
+    """Update event schema."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    date: Optional[date] = None
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    event_id: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    zone_id: Optional[str] = Field(None, min_length=1, max_length=100)
+
+
+class EventResponse(EventBase):
+    """Event response schema."""
+
+    id: int
+    owner_id: int
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

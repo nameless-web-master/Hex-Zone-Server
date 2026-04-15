@@ -1,11 +1,11 @@
 """CRUD operations for Zone."""
+# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 import json
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.future import select
 from sqlalchemy import func
 from app.models import Zone
-from app.models.zone import ZoneType
 from app.schemas.schemas import ZoneCreate, ZoneUpdate
 from app.core.h3_utils import lat_lng_to_h3_cell
 from typing import Optional, List, Any
@@ -56,7 +56,7 @@ def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
     db_zone = Zone(
         zone_id=zone.zone_id,
         owner_id=owner_id,
-        zone_type=ZoneType(zone.zone_type),
+        zone_type=zone.zone_type.value,
         name=zone.name,
         description=zone.description,
         h3_cells=h3_cells,
@@ -209,8 +209,8 @@ def update_zone(
     
     update_data = zone_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        if field == "zone_type" and value:
-            value = ZoneType(value)
+        if field == "zone_type" and value is not None:
+            value = value.value
         if field == "geo_fence_polygon":
             if value is None:
                 setattr(db_zone, field, None)

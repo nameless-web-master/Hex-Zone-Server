@@ -1,4 +1,5 @@
 """Router for Zone endpoints."""
+# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -6,6 +7,7 @@ from typing import Optional
 from app.database import get_db
 from app.schemas.schemas import (
     AccountTypeEnum,
+    ZoneTypeEnum,
     ZoneCreate,
     ZoneResponse,
     ZoneUpdate,
@@ -13,22 +15,22 @@ from app.schemas.schemas import (
 from app.crud import zone as zone_crud
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user
-from app.models import Owner
-from app.core.config import settings
 
 router = APIRouter(prefix="/zones", tags=["zones"])
 
-PRIVATE_ZONE_TYPES = {
-    "warn",
-    "alert",
-    "geofence",
+ALL_ZONE_TYPES = {zone_type.value for zone_type in ZoneTypeEnum}
+ZONE_LIMITS_BY_ACCOUNT = {
+    AccountTypeEnum.PRIVATE.value: 3,
+    AccountTypeEnum.EXCLUSIVE.value: 3,
+    AccountTypeEnum.GUARD.value: 1,
 }
 
 
-def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
+def check_zone_limit(db: Session, owner_id: int, account_type: str) -> tuple[bool, int, int]:
     """Check if owner has reached zone limit."""
     zone_count = zone_crud.count_zones(db, owner_id)
-    return zone_count >= settings.MAX_ZONES_PER_USER, zone_count
+    limit = ZONE_LIMITS_BY_ACCOUNT.get(account_type, 3)
+    return zone_count >= limit, zone_count, limit
 
 
 @router.post("/", response_model=ZoneResponse, status_code=status.HTTP_201_CREATED)
@@ -45,18 +47,18 @@ async def create_zone(
             detail="Owner not found",
         )
 
-    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and zone.zone_type not in PRIVATE_ZONE_TYPES:
+    if zone.zone_type.value not in ALL_ZONE_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported zone type: {zone.zone_type.value}",
         )
 
     # Check zone limit
-    at_limit, count = check_zone_limit(db, current_user["user_id"])
+    at_limit, count, limit = check_zone_limit(db, current_user["user_id"], owner.account_type)
     if at_limit:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Maximum {settings.MAX_ZONES_PER_USER} zones per user reached",
+            detail=f"Maximum {limit} zones per user reached for {owner.account_type} accounts",
         )
     
     try:
@@ -150,10 +152,10 @@ async def update_zone(
             detail="Owner not found",
         )
 
-    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and zone_update.zone_type is not None and zone_update.zone_type not in PRIVATE_ZONE_TYPES:
+    if zone_update.zone_type is not None and zone_update.zone_type.value not in ALL_ZONE_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported zone type: {zone_update.zone_type.value}",
         )
 
     try:

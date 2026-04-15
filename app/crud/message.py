@@ -1,10 +1,10 @@
 """CRUD operations for zone messages."""
+# UPDATED for Zoning-Messaging-System-Summary-v1.1.pdf
 from typing import Optional
 from sqlalchemy import and_, or_
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session, aliased
 from app.models import Message, Owner
-from app.models.message import MessageVisibility
 from app.schemas.schemas import ZoneMessageCreate
 
 
@@ -13,7 +13,7 @@ def create_message(db: Session, sender_id: int, payload: ZoneMessageCreate) -> M
     db_message = Message(
         sender_id=sender_id,
         receiver_id=payload.receiver_id,
-        visibility=MessageVisibility(payload.visibility),
+        message_type=payload.message_type.value,
         message=payload.message,
     )
     db.add(db_message)
@@ -34,9 +34,9 @@ def list_visible_messages(
     owner_zone_subquery = select(Owner.zone_id).where(Owner.id == owner_id).scalar_subquery()
 
     visibility_filter = or_(
-        Message.visibility == MessageVisibility.PUBLIC,
+        Message.message_type != "Private",
         and_(
-            Message.visibility == MessageVisibility.PRIVATE,
+            Message.message_type == "Private",
             or_(Message.sender_id == owner_id, Message.receiver_id == owner_id),
         ),
     )
@@ -55,11 +55,11 @@ def list_visible_messages(
         query = query.where(
             or_(
                 and_(
-                    Message.visibility == MessageVisibility.PUBLIC,
+                    Message.message_type != "Private",
                     Message.sender_id.in_([owner_id, other_owner_id]),
                 ),
                 and_(
-                    Message.visibility == MessageVisibility.PRIVATE,
+                    Message.message_type == "Private",
                     or_(
                         and_(Message.sender_id == owner_id, Message.receiver_id == other_owner_id),
                         and_(Message.sender_id == other_owner_id, Message.receiver_id == owner_id),
