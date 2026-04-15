@@ -11,9 +11,9 @@ class MemberLocation(Base):
     __tablename__ = "member_locations"
 
     id = Column(Integer, primary_key=True, index=True)
-    owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, unique=True)
     point = Column(Geometry("POINT", srid=4326), nullable=False)
-    h3_cell_id = Column(String(50), nullable=True, index=True)
+    h3_cell_id = Column(String(50), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False, onupdate=datetime.utcnow)
 
     __table_args__ = (

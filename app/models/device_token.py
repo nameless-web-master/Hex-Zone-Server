@@ -10,8 +10,8 @@ class DeviceToken(Base):
     __tablename__ = "device_tokens"
 
     id = Column(Integer, primary_key=True, index=True)
-    owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True)
-    token = Column(String(512), nullable=False, unique=True, index=True)
+    owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False)
+    token = Column(String(512), nullable=False, unique=True)
     platform = Column(String(20), nullable=False)
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
