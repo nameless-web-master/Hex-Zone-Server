@@ -1,4 +1,5 @@
 """Contract-compatible routes."""
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, status
@@ -26,6 +27,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8)
     accountType: Literal["PRIVATE", "EXCLUSIVE"]
     zoneId: str | None = None
+    address: str = Field(min_length=1)
 
 
 class ZoneUpsertRequest(BaseModel):
@@ -52,6 +54,29 @@ class PushTokenRequest(BaseModel):
     platform: Literal["FCM", "APNS"] = "FCM"
 
 
+class OwnerContractResponse(BaseModel):
+    id: str
+    email: EmailStr
+    zoneId: str
+    firstName: str
+    lastName: str
+    name: str
+    accountType: Literal["PRIVATE", "EXCLUSIVE"]
+    address: str
+    phone: str | None = None
+    active: bool
+    expired: bool
+    createdAt: datetime
+    updatedAt: datetime
+    apiKey: str
+
+
+class ContractSuccessOwnerMeResponse(BaseModel):
+    status: Literal["success"]
+    data: OwnerContractResponse
+    error: None = None
+
+
 @router.post("/login")
 async def login(payload: LoginRequest, db: Session = Depends(get_db)):
     data = controllers.login(db, payload.model_dump())
@@ -71,16 +96,26 @@ async def get_zones(owner: Owner = Depends(require_auth), db: Session = Depends(
     return success_response(controllers.list_zones(db, owner))
 
 
-@router.get("/me")
+@router.get("/me", response_model=ContractSuccessOwnerMeResponse)
 async def get_me(owner: Owner = Depends(require_auth)):
     account_type = "EXCLUSIVE" if owner.account_type.value == "exclusive" else "PRIVATE"
-    return success_response(
-        {
-            "id": str(owner.id),
-            "name": f"{owner.first_name} {owner.last_name}".strip(),
-            "accountType": account_type,
-        }
+    data = OwnerContractResponse(
+        id=str(owner.id),
+        email=owner.email,
+        zoneId=owner.zone_id,
+        firstName=owner.first_name,
+        lastName=owner.last_name,
+        name=f"{owner.first_name} {owner.last_name}".strip(),
+        accountType=account_type,
+        address=owner.address,
+        phone=owner.phone,
+        active=owner.active,
+        expired=owner.expired,
+        createdAt=owner.created_at,
+        updatedAt=owner.updated_at,
+        apiKey=owner.api_key,
     )
+    return success_response(data.model_dump())
 
 
 @router.post("/zones", status_code=status.HTTP_201_CREATED)

@@ -17,7 +17,7 @@ def _split_name(full_name: str) -> tuple[str, str]:
     if not parts:
         return "User", "User"
     if len(parts) == 1:
-        return parts[0], parts[0]
+        return parts[0], "User"
     return parts[0], " ".join(parts[1:])
 
 
@@ -35,7 +35,7 @@ def register_user(db: Session, payload: dict) -> dict:
         account_type=_to_contract_account_type(payload["accountType"]).lower(),
         hashed_password=get_password_hash(payload["password"]),
         api_key=generate_api_key(),
-        address=payload.get("zoneId") or "N/A",
+        address=payload.get("address", "N/A"),
     )
     db.add(owner)
     db.flush()

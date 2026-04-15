@@ -1,5 +1,5 @@
 """Pydantic schemas for request/response validation."""
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -35,9 +35,36 @@ class OwnerBase(BaseModel):
     phone: Optional[str] = Field(None, max_length=20)
 
 
-class OwnerCreate(OwnerBase):
+class OwnerCreate(BaseModel):
     """Owner creation schema."""
+    email: EmailStr
+    zone_id: str = Field(..., min_length=1, max_length=100)
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    account_type: AccountTypeEnum = AccountTypeEnum.PRIVATE
+    address: str = Field(..., min_length=1, max_length=255)
+    phone: Optional[str] = Field(None, max_length=20)
     password: str = Field(..., min_length=8)
+
+    @model_validator(mode="after")
+    def map_name_to_split_fields(self):
+        """Accept either name or first_name/last_name during registration."""
+        if self.first_name and self.last_name:
+            return self
+
+        if self.name:
+            parts = self.name.strip().split()
+            if parts:
+                self.first_name = self.first_name or parts[0]
+                self.last_name = self.last_name or (" ".join(parts[1:]) if len(parts) > 1 else "User")
+
+        if not self.first_name:
+            raise ValueError("first_name is required when name is not provided")
+        if not self.last_name:
+            raise ValueError("last_name is required when name is not provided")
+
+        return self
 
 
 class OwnerUpdate(BaseModel):
