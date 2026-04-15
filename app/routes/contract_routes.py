@@ -57,18 +57,17 @@ class PushTokenRequest(BaseModel):
 class OwnerContractResponse(BaseModel):
     id: str
     email: EmailStr
-    zoneId: str
-    firstName: str
-    lastName: str
-    name: str
-    accountType: Literal["PRIVATE", "EXCLUSIVE"]
+    zone_id: str
+    first_name: str
+    last_name: str
+    account_type: Literal["private", "exclusive"]
     address: str
     phone: str | None = None
     active: bool
     expired: bool
-    createdAt: datetime
-    updatedAt: datetime
-    apiKey: str
+    created_at: datetime
+    updated_at: datetime
+    api_key: str
 
 
 class ContractSuccessOwnerMeResponse(BaseModel):
@@ -98,22 +97,20 @@ async def get_zones(owner: Owner = Depends(require_auth), db: Session = Depends(
 
 @router.get("/me", response_model=ContractSuccessOwnerMeResponse)
 async def get_me(owner: Owner = Depends(require_auth)):
-    account_type = "EXCLUSIVE" if owner.account_type.value == "exclusive" else "PRIVATE"
     data = OwnerContractResponse(
         id=str(owner.id),
         email=owner.email,
-        zoneId=owner.zone_id,
-        firstName=owner.first_name,
-        lastName=owner.last_name,
-        name=f"{owner.first_name} {owner.last_name}".strip(),
-        accountType=account_type,
+        zone_id=owner.zone_id,
+        first_name=owner.first_name,
+        last_name=owner.last_name,
+        account_type=owner.account_type.value,
         address=owner.address,
         phone=owner.phone,
         active=owner.active,
         expired=owner.expired,
-        createdAt=owner.created_at,
-        updatedAt=owner.updated_at,
-        apiKey=owner.api_key,
+        created_at=owner.created_at,
+        updated_at=owner.updated_at,
+        api_key=owner.api_key,
     )
     return success_response(data.model_dump())
 

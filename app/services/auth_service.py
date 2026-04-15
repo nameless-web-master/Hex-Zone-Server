@@ -42,8 +42,18 @@ def register_user(db: Session, payload: dict) -> dict:
     db.refresh(owner)
     return {
         "id": str(owner.id),
-        "name": f"{owner.first_name} {owner.last_name}".strip(),
-        "accountType": _to_contract_account_type(owner.account_type.value),
+        "email": owner.email,
+        "zone_id": owner.zone_id,
+        "first_name": owner.first_name,
+        "last_name": owner.last_name,
+        "account_type": owner.account_type.value,
+        "address": owner.address,
+        "phone": owner.phone,
+        "active": owner.active,
+        "expired": owner.expired,
+        "created_at": owner.created_at,
+        "updated_at": owner.updated_at,
+        "api_key": owner.api_key,
     }
 
 
