@@ -56,6 +56,15 @@ def init_db():
                     """
                 )
             )
+            conn.execute(
+                text(
+                    """
+                    UPDATE owners
+                    SET last_name = COALESCE(NULLIF(first_name, ''), 'User')
+                    WHERE last_name IS NULL OR last_name = '';
+                    """
+                )
+            )
             conn.execute(text("ALTER TABLE owners ALTER COLUMN zone_id SET NOT NULL;"))
 
             # Allow duplicate zone_id values across different owners.

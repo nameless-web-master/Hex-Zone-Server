@@ -17,6 +17,12 @@ from datetime import timedelta
 router = APIRouter(prefix="/owners", tags=["owners"])
 
 
+def _normalize_owner_name(owner):
+    if not owner.last_name:
+        owner.last_name = owner.first_name or "User"
+    return owner
+
+
 @router.post("/register", response_model=OwnerResponse, status_code=status.HTTP_201_CREATED)
 async def register_owner(
     owner: OwnerCreate,
@@ -35,7 +41,7 @@ async def register_owner(
     db_owner = owner_crud.create_owner(db, owner)
     db.commit()
     
-    return OwnerResponse.model_validate(db_owner)
+    return OwnerResponse.model_validate(_normalize_owner_name(db_owner))
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -89,7 +95,7 @@ async def get_current_owner(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
-    return OwnerDetailResponse.model_validate(owner)
+    return OwnerDetailResponse.model_validate(_normalize_owner_name(owner))
 
 
 @router.get("/{owner_id}", response_model=OwnerDetailResponse)
@@ -105,7 +111,7 @@ async def get_owner(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
-    return OwnerDetailResponse.model_validate(owner)
+    return OwnerDetailResponse.model_validate(_normalize_owner_name(owner))
 
 
 @router.get("/", response_model=list[OwnerResponse])
@@ -117,7 +123,7 @@ async def list_owners(
 ):
     """List all owners (requires authentication)."""
     owners = owner_crud.list_owners(db, skip=skip, limit=limit)
-    return [OwnerResponse.model_validate(owner) for owner in owners]
+    return [OwnerResponse.model_validate(_normalize_owner_name(owner)) for owner in owners]
 
 
 @router.patch("/{owner_id}", response_model=OwnerResponse)
@@ -142,7 +148,7 @@ async def update_owner(
         )
     
     db.commit()
-    return OwnerResponse.model_validate(updated_owner)
+    return OwnerResponse.model_validate(_normalize_owner_name(updated_owner))
 
 
 @router.delete("/{owner_id}", status_code=status.HTTP_204_NO_CONTENT)

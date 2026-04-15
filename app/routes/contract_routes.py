@@ -71,6 +71,18 @@ async def get_zones(owner: Owner = Depends(require_auth), db: Session = Depends(
     return success_response(controllers.list_zones(db, owner))
 
 
+@router.get("/me")
+async def get_me(owner: Owner = Depends(require_auth)):
+    account_type = "EXCLUSIVE" if owner.account_type.value == "exclusive" else "PRIVATE"
+    return success_response(
+        {
+            "id": str(owner.id),
+            "name": f"{owner.first_name} {owner.last_name}".strip(),
+            "accountType": account_type,
+        }
+    )
+
+
 @router.post("/zones", status_code=status.HTTP_201_CREATED)
 async def post_zones(
     payload: ZoneUpsertRequest,
