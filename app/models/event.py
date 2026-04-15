@@ -19,14 +19,13 @@ class Event(Base):
     event_id = Column(String(100), nullable=False, index=True)
     description = Column(Text, nullable=True)
 
-    zone_id = Column(String(100), ForeignKey("zones.zone_id", ondelete="CASCADE"), nullable=False, index=True)
+    zone_id = Column(String(100), nullable=False, index=True)
     owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     owner = relationship("Owner", back_populates="events")
-    zone = relationship("Zone", back_populates="events")
 
     __table_args__ = (
         Index("ix_event_owner_zone", "owner_id", "zone_id"),

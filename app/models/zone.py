@@ -58,7 +58,6 @@ class Zone(Base):
 
     # Relationships
     owner = relationship("Owner", back_populates="zones")
-    events = relationship("Event", back_populates="zone", cascade="all, delete-orphan")
 
     @validates("geo_fence_polygon")
     def validate_geo_fence_polygon(self, key, value):
