@@ -23,7 +23,7 @@ class ZoneMessageEvent(Base):
     sender_id = Column(ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True)
     type = Column(Enum(ContractMessageType), nullable=False, index=True)
     text = Column(Text, nullable=False)
-    metadata = Column(JSON, nullable=False, default=dict)
+    metadata_json = Column("metadata", JSON, nullable=False, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     __table_args__ = (

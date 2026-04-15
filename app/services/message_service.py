@@ -17,7 +17,7 @@ def create_zone_message(db: Session, sender_id: int, payload: dict) -> dict:
         sender_id=sender_id,
         type=ContractMessageType(msg_type),
         text=payload["text"],
-        metadata=payload.get("metadata", {}),
+        metadata_json=payload.get("metadata", {}),
     )
     db.add(message)
     db.flush()
