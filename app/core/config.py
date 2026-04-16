@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     API_TITLE: str = "Zone Weaver API"
     API_VERSION: str = "1.0.0"
     API_DESCRIPTION: str = "User-Defined Zone Message Distribution Platform"
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
 
     # H3
     H3_DEFAULT_RESOLUTION: int = 13

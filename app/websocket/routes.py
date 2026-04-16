@@ -1,4 +1,7 @@
 """Websocket endpoint for realtime zone subscriptions."""
+import json
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi import HTTPException
 
@@ -6,41 +9,95 @@ from app.core.security import verify_token
 from app.websocket.manager import ws_manager
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _zone_websocket_session(websocket: WebSocket) -> None:
     token = websocket.query_params.get("token")
     if not token:
+        logger.warning("WebSocket auth failed: missing token")
         await websocket.close(code=1008, reason="Missing token")
         return
     try:
         payload = verify_token(token)
     except HTTPException:
+        logger.warning("WebSocket auth failed: invalid token")
         await websocket.close(code=1008, reason="Invalid token")
         return
     user_id = str(payload.get("sub"))
     if not user_id or user_id == "None":
+        logger.warning("WebSocket auth failed: invalid subject in token")
         await websocket.close(code=1008, reason="Invalid token")
         return
 
-    await ws_manager.connect(user_id, websocket)
+    logger.info("WebSocket auth succeeded: user_id=%s", user_id)
+    connection_id = await ws_manager.connect(user_id, websocket)
     try:
         while True:
-            data = await websocket.receive_json()
-            if data.get("type") == "SUBSCRIBE":
-                zone_ids = data.get("zoneIds", [])
-                if isinstance(zone_ids, list):
-                    ws_manager.subscribe(user_id, [str(item) for item in zone_ids])
+            raw_message = await websocket.receive_text()
+            try:
+                data = json.loads(raw_message)
+            except json.JSONDecodeError:
+                logger.warning("WebSocket invalid JSON: connection_id=%s", connection_id)
+                await websocket.send_json(
+                    {"type": "ERROR", "error": {"message": "Invalid JSON payload"}}
+                )
+                continue
+
+            if not isinstance(data, dict):
+                logger.warning("WebSocket invalid message type: connection_id=%s", connection_id)
+                await websocket.send_json(
+                    {"type": "ERROR", "error": {"message": "Payload must be a JSON object"}}
+                )
+                continue
+
+            message_type = data.get("type")
+            if message_type != "SUBSCRIBE":
+                logger.warning(
+                    "WebSocket unsupported message type: connection_id=%s type=%s",
+                    connection_id,
+                    message_type,
+                )
+                await websocket.send_json(
+                    {"type": "ERROR", "error": {"message": "Unsupported message type"}}
+                )
+                continue
+
+            zone_ids = data.get("zoneIds")
+            if not isinstance(zone_ids, list) or not all(isinstance(item, str) for item in zone_ids):
+                logger.warning("WebSocket invalid SUBSCRIBE payload: connection_id=%s", connection_id)
+                await websocket.send_json(
+                    {
+                        "type": "ERROR",
+                        "error": {"message": "zoneIds is required and must be a list of strings"},
+                    }
+                )
+                continue
+
+            subscribed_zones = await ws_manager.subscribe(connection_id, zone_ids)
+            await websocket.send_json(
+                {"type": "SUBSCRIBED", "data": {"zoneIds": sorted(subscribed_zones)}}
+            )
     except WebSocketDisconnect:
-        ws_manager.disconnect(user_id)
+        logger.info("WebSocket disconnected by client: connection_id=%s", connection_id)
+    except Exception:
+        logger.exception("WebSocket unexpected error: connection_id=%s", connection_id)
+        try:
+            await websocket.send_json(
+                {"type": "ERROR", "error": {"message": "Internal websocket error"}}
+            )
+        except Exception:
+            pass
+    finally:
+        await ws_manager.disconnect(connection_id)
 
 
 @router.websocket("/ws")
-async def websocket_handler(websocket: WebSocket):
+async def websocket_handler(websocket: WebSocket) -> None:
     await _zone_websocket_session(websocket)
 
 
 @router.websocket("/ws/messages")
-async def websocket_messages_alias(websocket: WebSocket):
+async def websocket_messages_alias(websocket: WebSocket) -> None:
     """Compatibility alias for clients expecting /ws/messages (same handshake as /ws)."""
     await _zone_websocket_session(websocket)
