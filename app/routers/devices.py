@@ -9,7 +9,6 @@ from app.schemas.schemas import (
     DeviceLocationUpdate,
 )
 from app.crud import device as device_crud
-from app.crud import owner as owner_crud
 from app.core.security import get_current_user
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -30,14 +29,13 @@ async def create_device(
 @router.get("/", response_model=list[DeviceResponse])
 async def list_devices(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    current_user: dict = Depends(get_current_user),
+    limit: int | None = Query(None, ge=1, le=10000),
+    _: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List devices for the current owner."""
+    """List all devices across all owners."""
     devices = device_crud.list_devices(
         db,
-        owner_id=current_user["user_id"],
         skip=skip,
         limit=limit,
     )

@@ -57,16 +57,20 @@ def get_device_by_hid(db: Session, hid: str, owner_id: Optional[int] = None) -> 
 
 def list_devices(
     db: Session,
-    owner_id: int,
+    owner_id: Optional[int] = None,
     skip: int = 0,
-    limit: int = 100,
-    active_only: bool = True,
+    limit: Optional[int] = None,
+    active_only: bool = False,
 ) -> List[Device]:
     """List devices for an owner."""
-    query = select(Device).where(Device.owner_id == owner_id)
+    query = select(Device)
+    if owner_id is not None:
+        query = query.where(Device.owner_id == owner_id)
     if active_only:
         query = query.where(Device.active == True)
-    query = query.offset(skip).limit(limit)
+    query = query.offset(skip)
+    if limit is not None:
+        query = query.limit(limit)
     result = db.execute(query)
     return result.scalars().all()
 
