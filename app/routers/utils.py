@@ -19,7 +19,12 @@ from fastapi import HTTPException, status
 router = APIRouter(prefix="/utils", tags=["utilities"])
 
 
-@router.post("/h3/convert", response_model=H3ConversionResponse)
+@router.post(
+    "/h3/convert",
+    response_model=H3ConversionResponse,
+    summary="Convert coordinate to H3",
+    description="Convert latitude/longitude to H3 cell for zone setup flows.",
+)
 async def convert_to_h3(
     request: H3ConversionRequest,
 ):
@@ -41,7 +46,12 @@ async def convert_to_h3(
     )
 
 
-@router.post("/qr/generate", response_model=QRRegistrationResponse)
+@router.post(
+    "/qr/generate",
+    response_model=QRRegistrationResponse,
+    summary="Generate QR registration token",
+    description="Generate invite token used by QR-code join flow.",
+)
 async def generate_qr_registration(
     qr_request: QRRegistrationCreate,
     current_user: dict = Depends(get_current_user),
@@ -72,7 +82,12 @@ async def generate_qr_registration(
     return QRRegistrationResponse.model_validate(qr)
 
 
-@router.post("/qr/join", response_model=OwnerResponse)
+@router.post(
+    "/qr/join",
+    response_model=OwnerResponse,
+    summary="Join account with QR token",
+    description="Complete registration by consuming invite token from QR flow.",
+)
 async def join_with_qr(
     qr_data: QRRegistrationUse,
     db: Session = Depends(get_db),

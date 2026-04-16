@@ -37,15 +37,25 @@ class OwnerBase(BaseModel):
 
 class OwnerCreate(BaseModel):
     """Owner creation schema."""
-    email: EmailStr
-    zone_id: str = Field(..., min_length=1, max_length=100)
+    email: EmailStr = Field(..., description="Username/email used to login")
+    zone_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Zone ID entered, generated, or scanned from QR in setup wizard",
+    )
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     account_type: AccountTypeEnum = AccountTypeEnum.PRIVATE
-    address: str = Field(..., min_length=1, max_length=255)
-    phone: Optional[str] = Field(None, max_length=20)
-    password: str = Field(..., min_length=8)
+    address: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Combined contact address (street/city/province/country)",
+    )
+    phone: Optional[str] = Field(None, max_length=20, description="Telephone")
+    password: str = Field(..., min_length=8, description="Account password")
 
     @model_validator(mode="after")
     def map_name_to_split_fields(self):
@@ -65,6 +75,21 @@ class OwnerCreate(BaseModel):
             raise ValueError("last_name is required when name is not provided")
 
         return self
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "email": "admin@example.com",
+                "zone_id": "ZONE-7A29",
+                "first_name": "Avery",
+                "last_name": "Stone",
+                "account_type": "private",
+                "address": "101 Main St, Denver, CO, USA",
+                "phone": "+1-303-555-0114",
+                "password": "strong-password-123",
+            }
+        }
+    }
 
 
 class OwnerUpdate(BaseModel):
@@ -177,12 +202,23 @@ class ZoneBase(BaseModel):
 
 class ZoneCreate(ZoneBase):
     """Zone creation schema."""
-    zone_id: str = Field(..., min_length=1, max_length=100)
-    h3_cells: List[str] = Field(default_factory=list)
+    zone_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Main zone or optional Zone #2/#3 shared identifier",
+    )
+    h3_cells: List[str] = Field(
+        default_factory=list,
+        description="Hex cell IDs for H3/grid-based zone configurations",
+    )
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
     h3_resolution: Optional[int] = Field(None, ge=0, le=15)
-    geo_fence_polygon: Optional[dict] = None
+    geo_fence_polygon: Optional[dict] = Field(
+        None,
+        description="GeoJSON polygon for geofence/object zoning",
+    )
 
 
 class ZoneUpdate(BaseModel):
@@ -250,8 +286,17 @@ class QRRegistrationUse(BaseModel):
 
 class LoginRequest(BaseModel):
     """Login request schema."""
-    email: EmailStr
-    password: str
+    email: EmailStr = Field(..., description="Registered username/email")
+    password: str = Field(..., description="Registered account password")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "email": "admin@example.com",
+                "password": "strong-password-123",
+            }
+        }
+    }
 
 
 class TokenResponse(BaseModel):

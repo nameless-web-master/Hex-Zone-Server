@@ -23,7 +23,17 @@ def _normalize_owner_name(owner):
     return owner
 
 
-@router.post("/register", response_model=OwnerResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=OwnerResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register account",
+    description=(
+        "Create an administrator/user account from setup wizard inputs. "
+        "Payload supports either `name` or `first_name`/`last_name`."
+    ),
+    response_description="Registered account profile with API key",
+)
 async def register_owner(
     owner: OwnerCreate,
     db: Session = Depends(get_db),
@@ -44,7 +54,13 @@ async def register_owner(
     return OwnerResponse.model_validate(_normalize_owner_name(db_owner))
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    summary="Login",
+    description="Authenticate with email and password and return bearer token.",
+    response_description="JWT access token and owner id",
+)
 async def login(
     credentials: LoginRequest,
     db: Session = Depends(get_db),
@@ -83,7 +99,12 @@ async def login(
     )
 
 
-@router.get("/me", response_model=OwnerDetailResponse)
+@router.get(
+    "/me",
+    response_model=OwnerDetailResponse,
+    summary="Get current owner profile",
+    response_description="Authenticated owner with related zones and devices",
+)
 async def get_current_owner(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),

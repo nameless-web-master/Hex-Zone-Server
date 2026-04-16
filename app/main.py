@@ -27,11 +27,58 @@ async def lifespan(app: FastAPI):
 
 
 # Create FastAPI app
+OPENAPI_TAGS = [
+    {
+        "name": "health",
+        "description": "Service readiness and API discovery endpoints.",
+    },
+    {
+        "name": "owners",
+        "description": "Registration, login, and owner profile management.",
+    },
+    {
+        "name": "zones",
+        "description": (
+            "Main Zone and optional Zone #2/#3 management. Includes Zone Matching, "
+            "H3/grid, geofence, and related zone configuration payloads."
+        ),
+    },
+    {
+        "name": "devices",
+        "description": "Device enrollment, presence heartbeat, and location updates.",
+    },
+    {
+        "name": "messages",
+        "description": "Zone-scoped messaging for public and private communication.",
+    },
+    {
+        "name": "utilities",
+        "description": "Helper endpoints for H3 conversion and QR registration flows.",
+    },
+    {
+        "name": "contract",
+        "description": (
+            "Mobile app contract routes aligned to setup wizard flows (register, zone "
+            "setup, schedule access, request access, and notifications)."
+        ),
+    },
+]
+
 app = FastAPI(
     title=settings.API_TITLE,
-    description=settings.API_DESCRIPTION,
+    description=(
+        f"{settings.API_DESCRIPTION}\n\n"
+        "This API supports setup wizard flows for administrator and user onboarding, "
+        "including registration, account login, zone provisioning, access scheduling, "
+        "QR-based onboarding, and zone messaging.\n\n"
+        "Primary flow references:\n"
+        "- Administrator registration: reg-code + account + Main Zone + access-point setup.\n"
+        "- User registration: account + optional Zone #2/#3 + schedule access + request access.\n"
+        "- Login: email/username and password authentication."
+    ),
     version=settings.API_VERSION,
     lifespan=lifespan,
+    openapi_tags=OPENAPI_TAGS,
 )
 
 # Add CORS middleware

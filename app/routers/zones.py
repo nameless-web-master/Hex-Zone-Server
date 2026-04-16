@@ -31,7 +31,16 @@ def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
     return zone_count >= settings.MAX_ZONES_PER_USER, zone_count
 
 
-@router.post("/", response_model=ZoneResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=ZoneResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create zone",
+    description=(
+        "Create Main Zone/Zone #1 or optional zones. Supports zone matching, "
+        "H3/grid, geofence, and object-style payloads based on zone_type."
+    ),
+)
 async def create_zone(
     zone: ZoneCreate,
     current_user: dict = Depends(get_current_user),
@@ -85,7 +94,12 @@ async def create_zone(
     return ZoneResponse.model_validate(zone_crud.zone_to_dict(created_zone))
 
 
-@router.get("/", response_model=list[ZoneResponse])
+@router.get(
+    "/",
+    response_model=list[ZoneResponse],
+    summary="List zones",
+    description="List authenticated owner's zones or filter by shared zone_id.",
+)
 async def list_zones(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -135,7 +149,12 @@ async def get_zone(
     return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
 
 
-@router.patch("/{zone_id}", response_model=ZoneResponse)
+@router.patch(
+    "/{zone_id}",
+    response_model=ZoneResponse,
+    summary="Update zone",
+    description="Update zone metadata/configuration for the authenticated owner.",
+)
 async def update_zone(
     zone_id: str,
     zone_update: ZoneUpdate,
