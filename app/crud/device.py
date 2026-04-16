@@ -25,6 +25,8 @@ def create_device(db: Session, owner_id: int, device: DeviceCreate) -> Device:
         owner_id=owner_id,
         propagate_enabled=device.propagate_enabled,
         propagate_radius_km=device.propagate_radius_km,
+        active=device.active if device.active is not None else True,
+        is_online=device.is_online if device.is_online is not None else False,
         enable_notification=device.enable_notification,
         alert_threshold_meters=device.alert_threshold_meters,
         update_interval_seconds=device.update_interval_seconds,
@@ -80,7 +82,7 @@ def update_device(
     if not db_device:
         return None
     
-    update_data = device_update.model_dump(exclude_unset=True)
+    update_data = device_update.model_dump(exclude_unset=True, exclude={"status"})
     for field, value in update_data.items():
         setattr(db_device, field, value)
 

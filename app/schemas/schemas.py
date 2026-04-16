@@ -1,5 +1,5 @@
 """Pydantic schemas for request/response validation."""
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator, computed_field
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -147,6 +147,18 @@ class DeviceCreate(DeviceBase):
     """Device creation schema."""
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
+    active: Optional[bool] = None
+    status: Optional[bool] = None
+    is_online: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def map_status_to_active(self):
+        """Allow clients to send either status or active."""
+        if self.status is not None:
+            if self.active is not None and self.active != self.status:
+                raise ValueError("active and status must match when both are provided")
+            self.active = self.status
+        return self
 
 
 class DeviceUpdate(BaseModel):
@@ -158,10 +170,20 @@ class DeviceUpdate(BaseModel):
     propagate_enabled: Optional[bool] = None
     propagate_radius_km: Optional[float] = Field(None, ge=0.1, le=50.0)
     active: Optional[bool] = None
+    status: Optional[bool] = None
     is_online: Optional[bool] = None
     enable_notification: Optional[bool] = None
     alert_threshold_meters: Optional[float] = Field(None, ge=1.0, le=1_000_000.0)
     update_interval_seconds: Optional[int] = Field(None, ge=1, le=86400)
+
+    @model_validator(mode="after")
+    def map_status_to_active(self):
+        """Allow clients to send either status or active."""
+        if self.status is not None:
+            if self.active is not None and self.active != self.status:
+                raise ValueError("active and status must match when both are provided")
+            self.active = self.status
+        return self
 
 
 class DeviceResponse(BaseModel):
@@ -188,6 +210,12 @@ class DeviceResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @computed_field
+    @property
+    def status(self) -> bool:
+        """Backwards-compatible status alias for active."""
+        return self.active
 
 
 # ==================== ZONE SCHEMAS ====================
