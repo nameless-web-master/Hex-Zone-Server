@@ -8,8 +8,7 @@ from app.websocket.manager import ws_manager
 router = APIRouter()
 
 
-@router.websocket("/ws")
-async def websocket_handler(websocket: WebSocket):
+async def _zone_websocket_session(websocket: WebSocket) -> None:
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=1008, reason="Missing token")
@@ -34,3 +33,14 @@ async def websocket_handler(websocket: WebSocket):
                     ws_manager.subscribe(user_id, [str(item) for item in zone_ids])
     except WebSocketDisconnect:
         ws_manager.disconnect(user_id)
+
+
+@router.websocket("/ws")
+async def websocket_handler(websocket: WebSocket):
+    await _zone_websocket_session(websocket)
+
+
+@router.websocket("/ws/messages")
+async def websocket_messages_alias(websocket: WebSocket):
+    """Compatibility alias for clients expecting /ws/messages (same handshake as /ws)."""
+    await _zone_websocket_session(websocket)

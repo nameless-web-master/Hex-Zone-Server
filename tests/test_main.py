@@ -1,6 +1,7 @@
 """Tests for registration and H3 conversion."""
 import pytest
 from httpx import AsyncClient
+from starlette.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.main import app
@@ -467,6 +468,108 @@ async def test_zone_messages_visibility_and_filtering(test_db, override_get_db):
         assert "Public from owner 1" in filtered_message_texts
         assert "Private 1 -> 2" in filtered_message_texts
         assert "Public from owner 4" not in filtered_message_texts
+
+
+@pytest.mark.asyncio
+async def test_get_messages_without_trailing_slash_returns_200(test_db, override_get_db):
+    """GET /messages (no slash) must list messages; avoids 405 clash with POST /messages contract."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        owner_id, access_token = await _register_and_login(
+            client,
+            email="noslash-msg@example.com",
+            zone_id="zone-noslash",
+            first_name="No",
+            last_name="Slash",
+        )
+        headers = {"Authorization": f"Bearer {access_token}"}
+        create_resp = await client.post(
+            "/messages/",
+            headers=headers,
+            json={"message": "Listed without slash", "visibility": "public"},
+        )
+        assert create_resp.status_code == 201
+
+        response = await client.get(
+            f"/messages?owner_id={owner_id}&skip=0&limit=100",
+            headers=headers,
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert isinstance(body, list)
+        assert len(body) >= 1
+        entry = body[0]
+        for key in ("id", "zone_id", "sender_id", "visibility", "message", "created_at"):
+            assert key in entry
+        assert any(item["message"] == "Listed without slash" for item in body)
+
+
+@pytest.mark.asyncio
+async def test_post_contract_messages_still_returns_201(test_db, override_get_db):
+    """Contract POST /messages must remain available for mobile integrations."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        register_resp = await client.post(
+            "/owners/register",
+            json={
+                "email": "contract-msg@example.com",
+                "zone_id": "contract-zone-1",
+                "first_name": "Contract",
+                "last_name": "User",
+                "account_type": "private",
+                "password": "SecurePassword123",
+                "address": "Addr",
+            },
+        )
+        assert register_resp.status_code == 201
+        zone_id = register_resp.json()["zone_id"]
+
+        login_resp = await client.post(
+            "/owners/login",
+            json={"email": "contract-msg@example.com", "password": "SecurePassword123"},
+        )
+        assert login_resp.status_code == 200
+        token = login_resp.json()["access_token"]
+
+        response = await client.post(
+            "/messages",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "zoneId": zone_id,
+                "type": "NORMAL",
+                "text": "Contract path message",
+                "metadata": {},
+            },
+        )
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["status"] == "success"
+        assert payload["data"]["text"] == "Contract path message"
+
+
+def test_websocket_ws_messages_alias_accepts_valid_token(test_db, override_get_db):
+    """WebSocket /ws/messages must mirror /ws for older clients (token query, SUBSCRIBE)."""
+    with TestClient(app) as client:
+        reg = client.post(
+            "/owners/register",
+            json={
+                "email": "ws-alias@example.com",
+                "zone_id": "ws-alias-zone",
+                "first_name": "WS",
+                "last_name": "Alias",
+                "account_type": "private",
+                "password": "SecurePassword123",
+                "address": "Addr",
+            },
+        )
+        assert reg.status_code == 201
+        login = client.post(
+            "/owners/login",
+            json={"email": "ws-alias@example.com", "password": "SecurePassword123"},
+        )
+        assert login.status_code == 200
+        token = login.json()["access_token"]
+
+        with client.websocket_connect(f"/ws/messages?token={token}") as ws:
+            ws.send_json({"type": "SUBSCRIBE", "zoneIds": ["ws-alias-zone"]})
 
 
 @pytest.mark.asyncio

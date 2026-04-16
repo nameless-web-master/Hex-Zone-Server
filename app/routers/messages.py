@@ -63,16 +63,15 @@ async def create_message(
     )
 
 
-@router.get("/", response_model=list[ZoneMessageResponse])
-async def list_messages(
-    owner_id: int = Query(..., ge=1),
-    other_owner_id: int | None = Query(None, ge=1),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """List zone-visible messages for an owner."""
+async def _list_zone_messages_for_owner(
+    *,
+    owner_id: int,
+    other_owner_id: int | None,
+    skip: int,
+    limit: int,
+    current_user: dict,
+    db: Session,
+) -> list[ZoneMessageResponse]:
     if owner_id != current_user["user_id"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -99,7 +98,7 @@ async def list_messages(
                 detail="other_owner_id is not in the same zone",
             )
 
-    messages = message_crud.list_visible_messages(
+    rows = message_crud.list_visible_messages(
         db,
         owner_id=owner_id,
         other_owner_id=other_owner_id,
@@ -116,5 +115,58 @@ async def list_messages(
             message=message.message,
             created_at=message.created_at,
         )
-        for message in messages
+        for message in rows
     ]
+
+
+@router.get(
+    "",
+    response_model=list[ZoneMessageResponse],
+    summary="List zone messages",
+    description=(
+        "List zone-visible messages for the authenticated owner. "
+        "This path (GET /messages, no trailing slash) is the canonical list URL and "
+        "matches contract-style clients; GET /messages/ is equivalent and retained for "
+        "backward compatibility."
+    ),
+)
+async def list_messages(
+    owner_id: int = Query(..., ge=1),
+    other_owner_id: int | None = Query(None, ge=1),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return await _list_zone_messages_for_owner(
+        owner_id=owner_id,
+        other_owner_id=other_owner_id,
+        skip=skip,
+        limit=limit,
+        current_user=current_user,
+        db=db,
+    )
+
+
+@router.get(
+    "/",
+    response_model=list[ZoneMessageResponse],
+    include_in_schema=False,
+)
+async def list_messages_trailing_slash(
+    owner_id: int = Query(..., ge=1),
+    other_owner_id: int | None = Query(None, ge=1),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Backward-compatible list URL (trailing slash)."""
+    return await _list_zone_messages_for_owner(
+        owner_id=owner_id,
+        other_owner_id=other_owner_id,
+        skip=skip,
+        limit=limit,
+        current_user=current_user,
+        db=db,
+    )
