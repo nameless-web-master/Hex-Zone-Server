@@ -4,7 +4,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session, aliased
 from app.models import Message, Owner
-from app.models.message import MessageVisibility
+from app.models.message import MessageType, MessageVisibility
 from app.schemas.schemas import ZoneMessageCreate
 
 
@@ -14,6 +14,7 @@ def create_message(db: Session, sender_id: int, payload: ZoneMessageCreate) -> M
         sender_id=sender_id,
         receiver_id=payload.receiver_id,
         visibility=MessageVisibility(payload.visibility),
+        message_type=MessageType.NORMAL,
         message=payload.message,
     )
     db.add(db_message)

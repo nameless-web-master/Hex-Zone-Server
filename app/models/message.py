@@ -13,6 +13,15 @@ class MessageVisibility(str, enum.Enum):
     PRIVATE = "private"
 
 
+class MessageType(str, enum.Enum):
+    """Message type classification."""
+
+    NORMAL = "NORMAL"
+    PANIC = "PANIC"
+    NS_PANIC = "NS_PANIC"
+    SENSOR = "SENSOR"
+
+
 class Message(Base):
     """Zone message model."""
 
@@ -22,6 +31,7 @@ class Message(Base):
     sender_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True)
     receiver_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=True, index=True)
     visibility = Column(Enum(MessageVisibility), nullable=False)
+    message_type = Column(Enum(MessageType), nullable=False, default=MessageType.NORMAL)
     message = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
