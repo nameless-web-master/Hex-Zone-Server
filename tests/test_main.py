@@ -545,6 +545,72 @@ async def test_post_contract_messages_still_returns_201(test_db, override_get_db
         assert payload["data"]["text"] == "Contract path message"
 
 
+@pytest.mark.asyncio
+async def test_post_messages_accepts_public_chat_payload_without_trailing_slash(test_db, override_get_db):
+    """POST /messages should accept chat payload and return created row."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, token = await _register_and_login(
+            client,
+            email="chat-public-noslash@example.com",
+            zone_id="chat-zone-public",
+            first_name="Chat",
+            last_name="Public",
+        )
+
+        response = await client.post(
+            "/messages",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "message": "Hello world",
+                "visibility": "public",
+            },
+        )
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["message"] == "Hello world"
+        assert payload["visibility"] == "public"
+        assert payload["receiver_id"] is None
+        for key in ("id", "zone_id", "sender_id", "created_at"):
+            assert key in payload
+
+
+@pytest.mark.asyncio
+async def test_post_messages_accepts_private_chat_payload_without_trailing_slash(test_db, override_get_db):
+    """POST /messages should accept private chat payload and return created row."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        receiver_id, _ = await _register_and_login(
+            client,
+            email="chat-private-receiver@example.com",
+            zone_id="chat-zone-private",
+            first_name="Chat",
+            last_name="Receiver",
+        )
+        _, sender_token = await _register_and_login(
+            client,
+            email="chat-private-sender@example.com",
+            zone_id="chat-zone-private",
+            first_name="Chat",
+            last_name="Sender",
+        )
+
+        response = await client.post(
+            "/messages",
+            headers={"Authorization": f"Bearer {sender_token}"},
+            json={
+                "message": "123123123",
+                "visibility": "private",
+                "receiver_id": receiver_id,
+            },
+        )
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["message"] == "123123123"
+        assert payload["visibility"] == "private"
+        assert payload["receiver_id"] == receiver_id
+        for key in ("id", "zone_id", "sender_id", "created_at"):
+            assert key in payload
+
+
 def test_websocket_ws_messages_alias_accepts_valid_token(test_db, override_get_db):
     """WebSocket /ws/messages must mirror /ws for older clients (token query, SUBSCRIBE)."""
     with TestClient(app) as client:

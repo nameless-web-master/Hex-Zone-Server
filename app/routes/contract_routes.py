@@ -2,14 +2,17 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.controllers import contract_controllers as controllers
+from app.crud import message as message_crud
+from app.crud import owner as owner_crud
 from app.database import get_db
 from app.middleware.auth import require_auth
 from app.models import Owner
+from app.schemas.schemas import MessageVisibilityEnum, ZoneMessageCreate, ZoneMessageResponse
 from app.utils.api_response import success_response
 from app.websocket.manager import ws_manager
 
@@ -87,6 +90,18 @@ class MessageCreateRequest(BaseModel):
     type: Literal["NORMAL", "PANIC", "NS_PANIC", "SENSOR"]
     text: str = Field(description="Message body")
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatMessageCreateRequest(BaseModel):
+    """Chat payload accepted by /messages (no trailing slash)."""
+
+    message: str = Field(..., min_length=1, max_length=16_384)
+    visibility: Literal["public", "private"]
+    receiver_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Required when visibility is private; omitted for public",
+    )
 
 
 class MemberLocationRequest(BaseModel):
@@ -211,14 +226,72 @@ async def remove_zone(zone_id: str, owner: Owner = Depends(require_auth), db: Se
     description="Create and broadcast message events to zone subscribers.",
 )
 async def post_messages(
-    payload: MessageCreateRequest,
+    payload: dict[str, Any] = Body(...),
     owner: Owner = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
-    data = controllers.create_message(db, owner, payload.model_dump())
+    # Backward-compatible contract payload.
+    if all(key in payload for key in ("zoneId", "type", "text")):
+        contract_payload = MessageCreateRequest.model_validate(payload)
+        data = controllers.create_message(db, owner, contract_payload.model_dump())
+        db.commit()
+        await ws_manager.broadcast_message(contract_payload.zoneId, data)
+        return success_response(data)
+
+    # Compatibility path for clients sending the chat payload shape.
+    chat_payload = ChatMessageCreateRequest.model_validate(payload)
+    sender = owner_crud.get_owner(db, owner.id)
+    if not sender:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sender owner not found",
+        )
+
+    if chat_payload.visibility == MessageVisibilityEnum.PRIVATE.value and chat_payload.receiver_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="receiver_id is required for private messages",
+        )
+
+    if chat_payload.visibility == MessageVisibilityEnum.PUBLIC.value and chat_payload.receiver_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="receiver_id must be omitted for public messages",
+        )
+
+    if chat_payload.receiver_id is not None:
+        receiver = owner_crud.get_owner(db, chat_payload.receiver_id)
+        if not receiver:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Receiver owner not found",
+            )
+        if receiver.zone_id != sender.zone_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Receiver is not in the sender zone",
+            )
+
+    db_message = message_crud.create_message(
+        db,
+        sender_id=sender.id,
+        payload=ZoneMessageCreate(
+            message=chat_payload.message,
+            visibility=chat_payload.visibility,
+            receiver_id=chat_payload.receiver_id,
+        ),
+    )
     db.commit()
-    await ws_manager.broadcast_message(payload.zoneId, data)
-    return success_response(data)
+
+    return ZoneMessageResponse(
+        id=db_message.id,
+        zone_id=sender.zone_id,
+        sender_id=db_message.sender_id,
+        receiver_id=db_message.receiver_id,
+        visibility=db_message.visibility,
+        message=db_message.message,
+        created_at=db_message.created_at,
+    )
 
 
 @router.get("/messages/new")
