@@ -109,6 +109,41 @@ class MemberLocationRequest(BaseModel):
     longitude: float = Field(ge=-180, le=180)
 
 
+class MemberLocationResponse(BaseModel):
+    latitude: float
+    longitude: float
+
+
+class MemberListItemResponse(BaseModel):
+    id: str
+    name: str = Field(description="Owner full name (first + last)")
+    first_name: str
+    last_name: str
+    address: str
+    zone_id: str
+    location: MemberLocationResponse | None = None
+    lastSeen: str | None = None
+    zones: list[str] = Field(default_factory=list)
+
+
+class ContractSuccessMembersResponse(BaseModel):
+    status: Literal["success"]
+    data: list[MemberListItemResponse]
+    error: None = None
+
+
+class MemberLocationUpdateResponse(BaseModel):
+    latitude: float
+    longitude: float
+    zones: list[str] = Field(default_factory=list)
+
+
+class ContractSuccessMemberLocationResponse(BaseModel):
+    status: Literal["success"]
+    data: MemberLocationUpdateResponse
+    error: None = None
+
+
 class PushTokenRequest(BaseModel):
     token: str = Field(min_length=10)
     platform: Literal["FCM", "APNS"] = "FCM"
@@ -300,12 +335,29 @@ async def get_new_messages(since: str = Query(...), db: Session = Depends(get_db
     return success_response(controllers.get_new_messages(db, since))
 
 
-@router.get("/members")
+@router.get(
+    "/members",
+    response_model=ContractSuccessMembersResponse,
+    summary="List members in caller zone",
+    description=(
+        "Returns active owners who share the same zone_id as the authenticated user. "
+        "Each item includes full name, first/last names, address, zone_id, optional "
+        "latest location snapshot, last seen timestamp, and active zone memberships."
+    ),
+)
 async def get_members(owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
     return success_response(controllers.get_members(db, owner))
 
 
-@router.post("/members/location")
+@router.post(
+    "/members/location",
+    response_model=ContractSuccessMemberLocationResponse,
+    summary="Upsert current member location",
+    description=(
+        "Creates or updates the authenticated user's location snapshot used by the "
+        "members list and zone evaluation workflows."
+    ),
+)
 async def post_member_location(
     payload: MemberLocationRequest,
     owner: Owner = Depends(require_auth),

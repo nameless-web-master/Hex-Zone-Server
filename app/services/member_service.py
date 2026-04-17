@@ -30,7 +30,11 @@ def list_members(db: Session, owner: Owner) -> list[dict]:
         output.append(
             {
                 "id": str(member.id),
-                "name": member.first_name,
+                "name": f"{member.first_name} {member.last_name}".strip(),
+                "first_name": member.first_name,
+                "last_name": member.last_name,
+                "address": member.address,
+                "zone_id": member.zone_id,
                 "location": None
                 if not location
                 else {"latitude": location.latitude, "longitude": location.longitude},
