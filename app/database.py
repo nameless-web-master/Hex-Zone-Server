@@ -73,6 +73,32 @@ def init_db():
             conn.execute(text("DROP INDEX IF EXISTS ix_zones_zone_id;"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_zones_zone_id ON zones (zone_id);"))
 
+            # Backward-compatible schema patch for older deployments missing member location fields.
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE member_locations
+                    ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE member_locations
+                    ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE member_locations
+                    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW();
+                    """
+                )
+            )
+
 
 def drop_db():
     """Drop all database tables."""
