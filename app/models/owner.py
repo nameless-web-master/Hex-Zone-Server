@@ -1,5 +1,5 @@
 """Owner/User model."""
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
