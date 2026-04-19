@@ -66,6 +66,86 @@ def init_db():
                 )
             )
             conn.execute(text("ALTER TABLE owners ALTER COLUMN zone_id SET NOT NULL;"))
+            conn.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'accounttype') THEN
+                            ALTER TYPE accounttype ADD VALUE IF NOT EXISTS 'private_plus';
+                            ALTER TYPE accounttype ADD VALUE IF NOT EXISTS 'enhanced';
+                            ALTER TYPE accounttype ADD VALUE IF NOT EXISTS 'enhanced_plus';
+                        END IF;
+                    END$$;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ownerrole') THEN
+                            CREATE TYPE ownerrole AS ENUM ('administrator', 'user');
+                        END IF;
+                    END$$;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE owners
+                    ADD COLUMN IF NOT EXISTS role ownerrole;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE owners
+                    ADD COLUMN IF NOT EXISTS account_owner_id INTEGER;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE owners
+                    SET role = 'administrator'
+                    WHERE role IS NULL;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE owners
+                    SET account_owner_id = id
+                    WHERE account_owner_id IS NULL;
+                    """
+                )
+            )
+            conn.execute(text("ALTER TABLE owners ALTER COLUMN role SET NOT NULL;"))
+            conn.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1
+                            FROM pg_constraint
+                            WHERE conname = 'fk_owners_account_owner'
+                        ) THEN
+                            ALTER TABLE owners
+                            ADD CONSTRAINT fk_owners_account_owner
+                            FOREIGN KEY (account_owner_id) REFERENCES owners(id) ON DELETE SET NULL;
+                        END IF;
+                    END$$;
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_owner_account_owner_id ON owners (account_owner_id);"))
 
             # Allow duplicate zone_id values across different owners.
             conn.execute(text("ALTER TABLE zones DROP CONSTRAINT IF EXISTS zones_zone_id_key;"))

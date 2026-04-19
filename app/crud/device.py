@@ -37,20 +37,34 @@ def create_device(db: Session, owner_id: int, device: DeviceCreate) -> Device:
     return db_device
 
 
-def get_device(db: Session, device_id: int, owner_id: Optional[int] = None) -> Optional[Device]:
+def get_device(
+    db: Session,
+    device_id: int,
+    owner_id: Optional[int] = None,
+    owner_ids: Optional[List[int]] = None,
+) -> Optional[Device]:
     """Get a device by ID, optionally filtered by owner."""
     query = select(Device).where(Device.id == device_id)
     if owner_id is not None:
         query = query.where(Device.owner_id == owner_id)
+    if owner_ids is not None:
+        query = query.where(Device.owner_id.in_(owner_ids))
     result = db.execute(query)
     return result.scalars().first()
 
 
-def get_device_by_hid(db: Session, hid: str, owner_id: Optional[int] = None) -> Optional[Device]:
+def get_device_by_hid(
+    db: Session,
+    hid: str,
+    owner_id: Optional[int] = None,
+    owner_ids: Optional[List[int]] = None,
+) -> Optional[Device]:
     """Get a device by hardware ID."""
     query = select(Device).where(Device.hid == hid)
     if owner_id is not None:
         query = query.where(Device.owner_id == owner_id)
+    if owner_ids is not None:
+        query = query.where(Device.owner_id.in_(owner_ids))
     result = db.execute(query)
     return result.scalars().first()
 
@@ -58,6 +72,7 @@ def get_device_by_hid(db: Session, hid: str, owner_id: Optional[int] = None) -> 
 def list_devices(
     db: Session,
     owner_id: Optional[int] = None,
+    owner_ids: Optional[List[int]] = None,
     skip: int = 0,
     limit: Optional[int] = None,
     active_only: bool = False,
@@ -66,6 +81,8 @@ def list_devices(
     query = select(Device)
     if owner_id is not None:
         query = query.where(Device.owner_id == owner_id)
+    if owner_ids is not None:
+        query = query.where(Device.owner_id.in_(owner_ids))
     if active_only:
         query = query.where(Device.active == True)
     query = query.offset(skip)
@@ -80,9 +97,10 @@ def update_device(
     device_id: int,
     device_update: DeviceUpdate,
     owner_id: Optional[int] = None,
+    owner_ids: Optional[List[int]] = None,
 ) -> Optional[Device]:
     """Update a device."""
-    db_device = get_device(db, device_id, owner_id)
+    db_device = get_device(db, device_id, owner_id=owner_id, owner_ids=owner_ids)
     if not db_device:
         return None
     
@@ -105,9 +123,14 @@ def touch_presence(db: Session, db_device: Device) -> None:
     db.flush()
 
 
-def delete_device(db: Session, device_id: int, owner_id: Optional[int] = None) -> bool:
+def delete_device(
+    db: Session,
+    device_id: int,
+    owner_id: Optional[int] = None,
+    owner_ids: Optional[List[int]] = None,
+) -> bool:
     """Delete a device."""
-    db_device = get_device(db, device_id, owner_id)
+    db_device = get_device(db, device_id, owner_id=owner_id, owner_ids=owner_ids)
     if not db_device:
         return False
     

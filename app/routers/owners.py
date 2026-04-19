@@ -12,6 +12,7 @@ from app.schemas.schemas import (
 )
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user, verify_password, create_access_token
+from app.services.access_policy import resolve_account_owner_id, visible_owner_ids
 from datetime import timedelta
 
 router = APIRouter(prefix="/owners", tags=["owners"])
@@ -30,7 +31,7 @@ def _normalize_owner_name(owner):
     summary="Register account",
     description=(
         "Create an administrator/user account from setup wizard inputs. "
-        "Payload supports either `name` or `first_name`/`last_name`."
+        "Supports all account tiers and links user registrations to an account owner."
     ),
     response_description="Registered account profile with API key",
 )
@@ -46,7 +47,15 @@ async def register_owner(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         )
-    
+
+    owner.account_owner_id = resolve_account_owner_id(
+        db,
+        role=owner.role.value,
+        requested_account_owner_id=owner.account_owner_id,
+        zone_id=owner.zone_id,
+        account_type=owner.account_type.value,
+    )
+
     # Create owner
     db_owner = owner_crud.create_owner(db, owner)
     db.commit()
@@ -103,7 +112,7 @@ async def login(
     "/me",
     response_model=OwnerDetailResponse,
     summary="Get current owner profile",
-    response_description="Authenticated owner with related zones and devices",
+    response_description="Authenticated owner with caller-visible zones and devices",
 )
 async def get_current_owner(
     current_user: dict = Depends(get_current_user),
@@ -119,13 +128,31 @@ async def get_current_owner(
     return OwnerDetailResponse.model_validate(_normalize_owner_name(owner))
 
 
-@router.get("/{owner_id}", response_model=OwnerDetailResponse)
+@router.get(
+    "/{owner_id}",
+    response_model=OwnerDetailResponse,
+    summary="Get owner by id",
+    description="Get a profile only if it is visible under caller account visibility rules.",
+)
 async def get_owner(
     owner_id: int,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get an owner by ID (requires authentication)."""
+    caller = owner_crud.get_owner(db, current_user["user_id"])
+    if not caller:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caller not found",
+        )
+    allowed_ids = visible_owner_ids(db, caller)
+    if owner_id not in allowed_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this owner",
+        )
+
     owner = owner_crud.get_owner(db, owner_id)
     if not owner:
         raise HTTPException(
@@ -135,15 +162,32 @@ async def get_owner(
     return OwnerDetailResponse.model_validate(_normalize_owner_name(owner))
 
 
-@router.get("/", response_model=list[OwnerResponse])
+@router.get(
+    "/",
+    response_model=list[OwnerResponse],
+    summary="List visible owners",
+    description=(
+        "List owners visible to caller by account policy. Administrators see all "
+        "owners in their account; users see only themselves."
+    ),
+)
 async def list_owners(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all owners (requires authentication)."""
+    """List caller-visible owners."""
+    caller = owner_crud.get_owner(db, current_user["user_id"])
+    if not caller:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caller not found",
+        )
+
+    allowed_ids = visible_owner_ids(db, caller)
     owners = owner_crud.list_owners(db, skip=skip, limit=limit)
+    owners = [owner for owner in owners if owner.id in allowed_ids]
     return [OwnerResponse.model_validate(_normalize_owner_name(owner)) for owner in owners]
 
 

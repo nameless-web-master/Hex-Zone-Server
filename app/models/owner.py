@@ -9,7 +9,16 @@ from app.database import Base
 class AccountType(str, enum.Enum):
     """Account type enumeration."""
     PRIVATE = "private"
+    PRIVATE_PLUS = "private_plus"
     EXCLUSIVE = "exclusive"
+    ENHANCED = "enhanced"
+    ENHANCED_PLUS = "enhanced_plus"
+
+
+class OwnerRole(str, enum.Enum):
+    """Owner role enumeration."""
+    ADMINISTRATOR = "administrator"
+    USER = "user"
 
 
 class Owner(Base):
@@ -22,6 +31,8 @@ class Owner(Base):
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     account_type = Column(Enum(AccountType), nullable=False, default=AccountType.PRIVATE)
+    role = Column(Enum(OwnerRole), nullable=False, default=OwnerRole.ADMINISTRATOR)
+    account_owner_id = Column(Integer, ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True)
     hashed_password = Column(String(255), nullable=False)
     api_key = Column(String(255), unique=True, nullable=False, index=True)
     phone = Column(String(20), nullable=True)
@@ -46,6 +57,7 @@ class Owner(Base):
         foreign_keys="Message.receiver_id",
         back_populates="receiver",
     )
+    account_owner = relationship("Owner", remote_side=[id], foreign_keys=[account_owner_id], post_update=True)
 
     __table_args__ = (
         Index("ix_owner_email", "email"),

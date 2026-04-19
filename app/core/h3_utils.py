@@ -54,3 +54,20 @@ def get_h3_resolution(cell_id: str) -> int:
         return h3.get_resolution(cell_id)
     except Exception:
         raise ValueError(f"Invalid H3 cell ID: {cell_id}")
+
+
+def has_h3_overlap(cells: List[str]) -> bool:
+    """Return True when cell list contains parent/child overlaps."""
+    valid_cells = [cell for cell in cells if validate_h3_cell(cell)]
+    if len(valid_cells) <= 1:
+        return False
+
+    seen: set[str] = set()
+    for cell in sorted(set(valid_cells), key=get_h3_resolution):
+        resolution = get_h3_resolution(cell)
+        for parent_resolution in range(resolution - 1, -1, -1):
+            parent_cell = h3.cell_to_parent(cell, parent_resolution)
+            if parent_cell in seen:
+                return True
+        seen.add(cell)
+    return False

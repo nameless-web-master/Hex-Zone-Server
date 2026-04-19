@@ -9,12 +9,30 @@ from app.schemas.schemas import (
     DeviceLocationUpdate,
 )
 from app.crud import device as device_crud
+from app.crud import owner as owner_crud
 from app.core.security import get_current_user
+from app.services.access_policy import visible_owner_ids
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
 
-@router.post("/", response_model=DeviceResponse, status_code=status.HTTP_201_CREATED)
+def _caller_visibility(db: Session, user_id: int) -> list[int]:
+    owner = owner_crud.get_owner(db, user_id)
+    if not owner:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner not found",
+        )
+    return visible_owner_ids(db, owner)
+
+
+@router.post(
+    "/",
+    response_model=DeviceResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create device",
+    description="Create a device under the authenticated owner account.",
+)
 async def create_device(
     device: DeviceCreate,
     current_user: dict = Depends(get_current_user),
@@ -26,16 +44,26 @@ async def create_device(
     return DeviceResponse.model_validate(db_device)
 
 
-@router.get("/", response_model=list[DeviceResponse])
+@router.get(
+    "/",
+    response_model=list[DeviceResponse],
+    summary="List devices",
+    description=(
+        "List devices visible to caller by account policy. Administrators can view "
+        "all devices under their account; users can view only their own devices."
+    ),
+)
 async def list_devices(
     skip: int = Query(0, ge=0),
     limit: int | None = Query(None, ge=1, le=10000),
-    _: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all devices across all owners."""
+    """List caller-visible devices based on account role."""
+    owner_ids = _caller_visibility(db, current_user["user_id"])
     devices = device_crud.list_devices(
         db,
+        owner_ids=owner_ids,
         skip=skip,
         limit=limit,
     )
@@ -49,7 +77,8 @@ async def device_heartbeat(
     db: Session = Depends(get_db),
 ):
     """Record device presence (online, last_seen)."""
-    device = device_crud.get_device(db, device_id, owner_id=current_user["user_id"])
+    owner_ids = _caller_visibility(db, current_user["user_id"])
+    device = device_crud.get_device(db, device_id, owner_ids=owner_ids)
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -61,14 +90,20 @@ async def device_heartbeat(
     return DeviceResponse.model_validate(device)
 
 
-@router.get("/{device_id}", response_model=DeviceResponse)
+@router.get(
+    "/{device_id}",
+    response_model=DeviceResponse,
+    summary="Get device",
+    description="Get a caller-visible device by id.",
+)
 async def get_device(
     device_id: int,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get a device by ID."""
-    device = device_crud.get_device(db, device_id, owner_id=current_user["user_id"])
+    owner_ids = _caller_visibility(db, current_user["user_id"])
+    device = device_crud.get_device(db, device_id, owner_ids=owner_ids)
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -84,7 +119,8 @@ async def get_device_by_hid(
     db: Session = Depends(get_db),
 ):
     """Get a device by hardware ID."""
-    device = device_crud.get_device_by_hid(db, hid, owner_id=current_user["user_id"])
+    owner_ids = _caller_visibility(db, current_user["user_id"])
+    device = device_crud.get_device_by_hid(db, hid, owner_ids=owner_ids)
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -93,7 +129,12 @@ async def get_device_by_hid(
     return DeviceResponse.model_validate(device)
 
 
-@router.patch("/{device_id}", response_model=DeviceResponse)
+@router.patch(
+    "/{device_id}",
+    response_model=DeviceResponse,
+    summary="Update device",
+    description="Update a caller-visible device including address and operational settings.",
+)
 async def update_device(
     device_id: int,
     device_update: DeviceUpdate,
@@ -101,11 +142,12 @@ async def update_device(
     db: Session = Depends(get_db),
 ):
     """Update a device."""
+    owner_ids = _caller_visibility(db, current_user["user_id"])
     device = device_crud.update_device(
         db,
         device_id,
         device_update,
-        owner_id=current_user["user_id"],
+        owner_ids=owner_ids,
     )
     if not device:
         raise HTTPException(
@@ -124,7 +166,8 @@ async def update_device_location(
     db: Session = Depends(get_db),
 ):
     """Update device location and calculate H3 cell."""
-    device = device_crud.get_device(db, device_id, owner_id=current_user["user_id"])
+    owner_ids = _caller_visibility(db, current_user["user_id"])
+    device = device_crud.get_device(db, device_id, owner_ids=owner_ids)
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -140,7 +183,7 @@ async def update_device_location(
         db,
         device_id,
         update_data,
-        owner_id=current_user["user_id"],
+        owner_ids=owner_ids,
     )
     device_crud.touch_presence(db, updated_device)
 
@@ -155,7 +198,8 @@ async def delete_device(
     db: Session = Depends(get_db),
 ):
     """Delete a device."""
-    deleted = device_crud.delete_device(db, device_id, owner_id=current_user["user_id"])
+    owner_ids = _caller_visibility(db, current_user["user_id"])
+    deleted = device_crud.delete_device(db, device_id, owner_ids=owner_ids)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

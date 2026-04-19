@@ -8,7 +8,16 @@ from enum import Enum
 class AccountTypeEnum(str, Enum):
     """Account type enum."""
     PRIVATE = "private"
+    PRIVATE_PLUS = "private_plus"
     EXCLUSIVE = "exclusive"
+    ENHANCED = "enhanced"
+    ENHANCED_PLUS = "enhanced_plus"
+
+
+class OwnerRoleEnum(str, Enum):
+    """Owner role enum."""
+    ADMINISTRATOR = "administrator"
+    USER = "user"
 
 
 class ZoneTypeEnum(str, Enum):
@@ -31,6 +40,8 @@ class OwnerBase(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     account_type: AccountTypeEnum = AccountTypeEnum.PRIVATE
+    role: OwnerRoleEnum = OwnerRoleEnum.ADMINISTRATOR
+    account_owner_id: Optional[int] = Field(None, ge=1)
     address: str = Field(..., min_length=1, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
 
@@ -48,6 +59,12 @@ class OwnerCreate(BaseModel):
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     account_type: AccountTypeEnum = AccountTypeEnum.PRIVATE
+    role: OwnerRoleEnum = OwnerRoleEnum.ADMINISTRATOR
+    account_owner_id: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Required for user role when joining an existing administrator account.",
+    )
     address: str = Field(
         ...,
         min_length=1,
@@ -84,6 +101,7 @@ class OwnerCreate(BaseModel):
                 "first_name": "Avery",
                 "last_name": "Stone",
                 "account_type": "private",
+                "role": "administrator",
                 "address": "101 Main St, Denver, CO, USA",
                 "phone": "+1-303-555-0114",
                 "password": "strong-password-123",

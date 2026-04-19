@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Owner, Zone
 from app.models.zone import ZoneType
+from app.core.h3_utils import has_h3_overlap, validate_h3_cell
 
 CONTRACT_TO_MODEL_ZONE_TYPE = {
     "polygon": ZoneType.GEOFENCE,
@@ -46,8 +47,25 @@ def _serialize_zone(zone: Zone) -> dict:
 
 def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
     count = db.query(Zone).filter(Zone.owner_id == owner.id).count()
-    if count >= 3:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Maximum 3 zones per user")
+    if owner.role.value == "administrator":
+        if count >= 1:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Administrator can only configure Main Zone (Zone #1)",
+            )
+    else:
+        if count >= 2:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User can only configure Zone #2 and Zone #3",
+            )
+        account_owner_id = owner.account_owner_id or owner.id
+        main_zone_exists = db.query(Zone.id).filter(Zone.owner_id == account_owner_id).first()
+        if not main_zone_exists:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Main Zone must be configured by administrator before user zones",
+            )
 
     zone_type = payload["type"]
     if zone_type not in CONTRACT_TO_MODEL_ZONE_TYPE:
@@ -55,6 +73,16 @@ def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
 
     geometry = payload.get("geometry", {})
     geo_fence_polygon = _extract_geojson_polygon(geometry)
+    config = payload.get("config", {}) or {}
+    h3_cells = config.get("h3Cells", []) if isinstance(config, dict) else []
+    if h3_cells:
+        if any(not validate_h3_cell(cell) for cell in h3_cells):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid H3 cell id")
+        if has_h3_overlap(h3_cells):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Overlapping H3 cells are not allowed across resolutions",
+            )
 
     zone = Zone(
         zone_id=payload.get("id") or f"{owner.id}-{count + 1}",
@@ -64,9 +92,9 @@ def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
         parameters={
             "contractType": zone_type,
             "geometry": geometry,
-            "config": payload.get("config", {}),
+            "config": config,
         },
-        h3_cells=payload.get("config", {}).get("h3Cells", []),
+        h3_cells=h3_cells,
         geo_fence_polygon=geo_fence_polygon,
     )
     db.add(zone)
@@ -97,7 +125,18 @@ def update_zone(db: Session, owner: Owner, zone_id: str, payload: dict) -> dict:
         params["geometry"] = geometry
         zone.geo_fence_polygon = _extract_geojson_polygon(geometry)
     if "config" in payload:
-        params["config"] = payload.get("config", {})
+        config = payload.get("config", {}) or {}
+        h3_cells = config.get("h3Cells", []) if isinstance(config, dict) else []
+        if h3_cells:
+            if any(not validate_h3_cell(cell) for cell in h3_cells):
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid H3 cell id")
+            if has_h3_overlap(h3_cells):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Overlapping H3 cells are not allowed across resolutions",
+                )
+        params["config"] = config
+        zone.h3_cells = h3_cells
     if payload.get("type"):
         params["contractType"] = payload["type"]
     zone.parameters = params

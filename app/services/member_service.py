@@ -3,7 +3,8 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import MemberLocation, Owner, PushToken, Zone
+from app.models import Device, MemberLocation, Owner, PushToken, Zone
+from app.services.access_policy import visible_owner_ids
 from app.services.geospatial_service import evaluate_member_zones
 
 
@@ -22,10 +23,22 @@ def upsert_member_location(db: Session, owner_id: int, latitude: float, longitud
 
 
 def list_members(db: Session, owner: Owner) -> list[dict]:
-    members = db.query(Owner).filter(Owner.zone_id == owner.zone_id, Owner.active.is_(True)).all()
+    owner_ids = visible_owner_ids(db, owner)
+    members = db.query(Owner).filter(Owner.id.in_(owner_ids), Owner.active.is_(True)).all()
     output: list[dict] = []
     for member in members:
         location = db.get(MemberLocation, member.id)
+        if location is None:
+            location = (
+                db.query(Device)
+                .filter(
+                    Device.owner_id == member.id,
+                    Device.latitude.isnot(None),
+                    Device.longitude.isnot(None),
+                )
+                .order_by(Device.updated_at.desc())
+                .first()
+            )
         zones = db.query(Zone.zone_id).filter(Zone.owner_id == member.id, Zone.active.is_(True)).all()
         output.append(
             {

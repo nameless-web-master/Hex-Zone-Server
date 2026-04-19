@@ -19,6 +19,8 @@ def create_owner(db: Session, owner: OwnerCreate) -> Owner:
         first_name=owner.first_name,
         last_name=owner.last_name,
         account_type=owner.account_type,
+        role=owner.role,
+        account_owner_id=owner.account_owner_id,
         hashed_password=get_password_hash(owner.password),
         api_key=api_key,
         phone=owner.phone,
@@ -26,6 +28,9 @@ def create_owner(db: Session, owner: OwnerCreate) -> Owner:
     )
     db.add(db_owner)
     db.flush()
+    if db_owner.role.value == "administrator" and db_owner.account_owner_id is None:
+        db_owner.account_owner_id = db_owner.id
+        db.flush()
     db.refresh(db_owner)
     return db_owner
 

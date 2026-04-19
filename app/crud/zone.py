@@ -7,7 +7,7 @@ from sqlalchemy import func
 from app.models import Zone
 from app.models.zone import ZoneType
 from app.schemas.schemas import ZoneCreate, ZoneUpdate
-from app.core.h3_utils import lat_lng_to_h3_cell
+from app.core.h3_utils import has_h3_overlap, lat_lng_to_h3_cell, validate_h3_cell
 from typing import Optional, List, Any
 
 
@@ -52,6 +52,12 @@ def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
 
     if zone.geo_fence_polygon is not None:
         geo_fence_polygon = _geojson_to_geometry(zone.geo_fence_polygon)
+
+    if h3_cells:
+        if any(not validate_h3_cell(cell) for cell in h3_cells):
+            raise ValueError("Invalid H3 cell id")
+        if has_h3_overlap(h3_cells):
+            raise ValueError("Overlapping H3 cells are not allowed across resolutions")
 
     db_zone = Zone(
         zone_id=zone.zone_id,
@@ -211,6 +217,11 @@ def update_zone(
     for field, value in update_data.items():
         if field == "zone_type" and value:
             value = ZoneType(value)
+        if field == "h3_cells" and value:
+            if any(not validate_h3_cell(cell) for cell in value):
+                raise ValueError("Invalid H3 cell id")
+            if has_h3_overlap(value):
+                raise ValueError("Overlapping H3 cells are not allowed across resolutions")
         if field == "geo_fence_polygon":
             if value is None:
                 setattr(db_zone, field, None)

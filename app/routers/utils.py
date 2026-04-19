@@ -132,7 +132,7 @@ async def join_with_qr(
         )
     
     # Create new owner under Private account type
-    from app.schemas.schemas import OwnerCreate, AccountTypeEnum
+    from app.schemas.schemas import OwnerCreate, AccountTypeEnum, OwnerRoleEnum
     new_owner_data = OwnerCreate(
         email=qr_data.email,
         # Enforce inviter zone ownership for all QR-based joins.
@@ -141,6 +141,8 @@ async def join_with_qr(
         last_name=qr_data.last_name,
         password=qr_data.password,
         account_type=AccountTypeEnum.PRIVATE,
+        role=OwnerRoleEnum.USER,
+        account_owner_id=owner.id,
         address=qr_data.address,
         phone=qr_data.phone,
     )

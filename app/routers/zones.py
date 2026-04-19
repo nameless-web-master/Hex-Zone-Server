@@ -15,6 +15,7 @@ from app.crud import owner as owner_crud
 from app.core.security import get_current_user
 from app.models import Owner
 from app.core.config import settings
+from app.services.access_policy import visible_owner_ids
 
 router = APIRouter(prefix="/zones", tags=["zones"])
 
@@ -37,8 +38,9 @@ def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
     status_code=status.HTTP_201_CREATED,
     summary="Create zone",
     description=(
-        "Create Main Zone/Zone #1 or optional zones. Supports zone matching, "
-        "H3/grid, geofence, and object-style payloads based on zone_type."
+        "Create zones with role constraints: administrator can configure only Main "
+        "Zone (Zone #1), while users can configure Zone #2 and Zone #3. "
+        "Rejects invalid/overlapping H3 cells across mixed resolutions."
     ),
 )
 async def create_zone(
@@ -61,11 +63,16 @@ async def create_zone(
         )
 
     # Check zone limit
-    at_limit, count = check_zone_limit(db, current_user["user_id"])
-    if at_limit:
+    _, count = check_zone_limit(db, current_user["user_id"])
+    if owner.role.value == "administrator" and count >= 1:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Maximum {settings.MAX_ZONES_PER_USER} zones per user reached",
+            detail="Administrator can only configure Main Zone (Zone #1)",
+        )
+    if owner.role.value == "user" and count >= 2:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User can only configure Zone #2 and Zone #3",
         )
     
     try:
@@ -98,7 +105,7 @@ async def create_zone(
     "/",
     response_model=list[ZoneResponse],
     summary="List zones",
-    description="List authenticated owner's zones or filter by shared zone_id.",
+    description="List caller-visible zones or filter by shared zone_id within caller visibility scope.",
 )
 async def list_zones(
     skip: int = Query(0, ge=0),
@@ -109,6 +116,14 @@ async def list_zones(
     db: Session = Depends(get_db),
 ):
     """List zones, or all matching shared zone_id entries when provided."""
+    caller = owner_crud.get_owner(db, current_user["user_id"])
+    if not caller:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner not found",
+        )
+    allowed_ids = set(visible_owner_ids(db, caller))
+
     if zone_id is not None:
         zones = zone_crud.list_zones_by_zone_id_with_geojson(
             db,
@@ -116,9 +131,10 @@ async def list_zones(
             skip=skip,
             limit=limit,
         )
+        zones = [zone for zone in zones if zone.owner_id in allowed_ids]
         return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
 
-    if owner_id is not None and owner_id != current_user["user_id"]:
+    if owner_id is not None and owner_id not in allowed_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: cannot access another owner's zones",
@@ -140,7 +156,15 @@ async def get_zone(
     db: Session = Depends(get_db),
 ):
     """Get all zones by shared zone_id for authenticated users."""
+    caller = owner_crud.get_owner(db, current_user["user_id"])
+    if not caller:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner not found",
+        )
+    allowed_ids = set(visible_owner_ids(db, caller))
     zones = zone_crud.list_zones_by_zone_id_with_geojson(db, zone_id)
+    zones = [zone for zone in zones if zone.owner_id in allowed_ids]
     if not zones:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -153,7 +177,7 @@ async def get_zone(
     "/{zone_id}",
     response_model=ZoneResponse,
     summary="Update zone",
-    description="Update zone metadata/configuration for the authenticated owner.",
+    description="Update zone metadata/configuration and validate H3 cell overlap constraints.",
 )
 async def update_zone(
     zone_id: str,
