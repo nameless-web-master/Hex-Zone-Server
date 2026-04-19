@@ -86,7 +86,40 @@ def init_db():
                     DO $$
                     BEGIN
                         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ownerrole') THEN
-                            CREATE TYPE ownerrole AS ENUM ('administrator', 'user');
+                            CREATE TYPE ownerrole AS ENUM ('ADMINISTRATOR', 'USER');
+                        END IF;
+
+                        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ownerrole') THEN
+                            IF EXISTS (
+                                SELECT 1
+                                FROM pg_enum e
+                                JOIN pg_type t ON t.oid = e.enumtypid
+                                WHERE t.typname = 'ownerrole' AND e.enumlabel = 'administrator'
+                            ) AND NOT EXISTS (
+                                SELECT 1
+                                FROM pg_enum e
+                                JOIN pg_type t ON t.oid = e.enumtypid
+                                WHERE t.typname = 'ownerrole' AND e.enumlabel = 'ADMINISTRATOR'
+                            ) THEN
+                                ALTER TYPE ownerrole RENAME VALUE 'administrator' TO 'ADMINISTRATOR';
+                            END IF;
+
+                            IF EXISTS (
+                                SELECT 1
+                                FROM pg_enum e
+                                JOIN pg_type t ON t.oid = e.enumtypid
+                                WHERE t.typname = 'ownerrole' AND e.enumlabel = 'user'
+                            ) AND NOT EXISTS (
+                                SELECT 1
+                                FROM pg_enum e
+                                JOIN pg_type t ON t.oid = e.enumtypid
+                                WHERE t.typname = 'ownerrole' AND e.enumlabel = 'USER'
+                            ) THEN
+                                ALTER TYPE ownerrole RENAME VALUE 'user' TO 'USER';
+                            END IF;
+
+                            ALTER TYPE ownerrole ADD VALUE IF NOT EXISTS 'ADMINISTRATOR';
+                            ALTER TYPE ownerrole ADD VALUE IF NOT EXISTS 'USER';
                         END IF;
                     END$$;
                     """
@@ -112,7 +145,7 @@ def init_db():
                 text(
                     """
                     UPDATE owners
-                    SET role = 'administrator'
+                    SET role = 'ADMINISTRATOR'::ownerrole
                     WHERE role IS NULL;
                     """
                 )
