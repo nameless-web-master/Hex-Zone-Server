@@ -886,6 +886,7 @@ async def test_contract_zones_lists_private_account_admin_and_user_zones(test_db
             },
         )
         assert user_register.status_code == 201
+        user_id = user_register.json()["id"]
 
         admin_login = await client.post(
             "/owners/login",
@@ -933,7 +934,9 @@ async def test_contract_zones_lists_private_account_admin_and_user_zones(test_db
         )
         assert admin_list.status_code == 200
         admin_zone_ids = {zone["id"] for zone in admin_list.json()["data"]}
+        admin_owner_ids = {zone["owner_id"] for zone in admin_list.json()["data"]}
         assert {"C-PRIVATE-ADMIN", "C-PRIVATE-USER"}.issubset(admin_zone_ids)
+        assert {admin_id, user_id}.issubset(admin_owner_ids)
 
         user_list = await client.get(
             "/zones",
@@ -941,7 +944,9 @@ async def test_contract_zones_lists_private_account_admin_and_user_zones(test_db
         )
         assert user_list.status_code == 200
         user_zone_ids = {zone["id"] for zone in user_list.json()["data"]}
+        user_owner_ids = {zone["owner_id"] for zone in user_list.json()["data"]}
         assert {"C-PRIVATE-ADMIN", "C-PRIVATE-USER"}.issubset(user_zone_ids)
+        assert {admin_id, user_id}.issubset(user_owner_ids)
 
 
 @pytest.mark.asyncio

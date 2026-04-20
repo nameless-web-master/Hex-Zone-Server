@@ -39,6 +39,7 @@ def _serialize_zone(zone: Zone) -> dict:
     contract_type = (zone.parameters or {}).get("contractType")
     return {
         "id": zone.zone_id,
+        "owner_id": zone.owner_id,
         "name": zone.name,
         "type": contract_type or MODEL_TO_CONTRACT_ZONE_TYPE.get(zone.zone_type, "dynamic"),
         "geometry": (zone.parameters or {}).get("geometry", {}),
