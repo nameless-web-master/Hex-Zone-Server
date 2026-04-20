@@ -15,7 +15,7 @@ from app.crud import owner as owner_crud
 from app.core.security import get_current_user
 from app.models import Owner
 from app.core.config import settings
-from app.services.access_policy import visible_owner_ids
+from app.services.access_policy import visible_zone_owner_ids
 
 router = APIRouter(prefix="/zones", tags=["zones"])
 
@@ -122,7 +122,7 @@ async def list_zones(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
-    allowed_ids = set(visible_owner_ids(db, caller))
+    allowed_ids = set(visible_zone_owner_ids(db, caller))
 
     if zone_id is not None:
         zones = zone_crud.list_zones_by_zone_id_with_geojson(
@@ -167,7 +167,7 @@ async def get_zone(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
-    allowed_ids = set(visible_owner_ids(db, caller))
+    allowed_ids = set(visible_zone_owner_ids(db, caller))
     zones = zone_crud.list_zones_by_zone_id_with_geojson(db, zone_id)
     zones = [zone for zone in zones if zone.owner_id in allowed_ids]
     if not zones:

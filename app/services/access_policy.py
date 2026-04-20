@@ -80,3 +80,27 @@ def visible_owner_ids(db: Session, owner: Owner) -> list[int]:
         owner_ids.append(owner.id)
     return owner_ids
 
+
+def visible_zone_owner_ids(db: Session, owner: Owner) -> list[int]:
+    """Return owners whose zones are visible to the caller.
+
+    Private accounts are zone-collaborative: both administrator and users can
+    view each other's zones/cells within the same account root.
+    """
+    if owner.account_type.value != "private":
+        return visible_owner_ids(db, owner)
+
+    root_id = account_root_id(owner)
+    rows = (
+        db.query(Owner.id)
+        .filter(
+            Owner.account_owner_id == root_id,
+            Owner.active.is_(True),
+        )
+        .all()
+    )
+    owner_ids = [row[0] for row in rows]
+    if owner.id not in owner_ids:
+        owner_ids.append(owner.id)
+    return owner_ids
+

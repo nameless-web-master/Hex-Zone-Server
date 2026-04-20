@@ -760,6 +760,191 @@ async def test_list_zones_with_zone_id_query_returns_all_matching_entries(test_d
 
 
 @pytest.mark.asyncio
+async def test_private_admin_and_user_can_view_each_others_zones(test_db, override_get_db):
+    """Private admin and linked private user should both see each other's zones."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin_register = await client.post(
+            "/owners/register",
+            json={
+                "email": "private-admin@example.com",
+                "zone_id": "private-shared-zone",
+                "first_name": "Private",
+                "last_name": "Admin",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "address": "Admin Address",
+            },
+        )
+        assert admin_register.status_code == 201
+        admin_id = admin_register.json()["id"]
+
+        user_register = await client.post(
+            "/owners/register",
+            json={
+                "email": "private-user@example.com",
+                "zone_id": "private-shared-zone",
+                "first_name": "Private",
+                "last_name": "User",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user_register.status_code == 201
+        user_id = user_register.json()["id"]
+
+        admin_login = await client.post(
+            "/owners/login",
+            json={"email": "private-admin@example.com", "password": "SecurePassword123"},
+        )
+        assert admin_login.status_code == 200
+        admin_token = admin_login.json()["access_token"]
+
+        user_login = await client.post(
+            "/owners/login",
+            json={"email": "private-user@example.com", "password": "SecurePassword123"},
+        )
+        assert user_login.status_code == 200
+        user_token = user_login.json()["access_token"]
+
+        admin_zone = await client.post(
+            "/zones/",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={
+                "zone_id": "PRIVATE-ZONE-A",
+                "zone_type": "warn",
+                "name": "Admin Zone",
+                "description": "Admin created",
+                "h3_cells": [],
+            },
+        )
+        assert admin_zone.status_code == 201
+
+        user_zone = await client.post(
+            "/zones/",
+            headers={"Authorization": f"Bearer {user_token}"},
+            json={
+                "zone_id": "PRIVATE-ZONE-U",
+                "zone_type": "warn",
+                "name": "User Zone",
+                "description": "User created",
+                "h3_cells": [],
+            },
+        )
+        assert user_zone.status_code == 201
+
+        user_reads_admin = await client.get(
+            f"/zones/?owner_id={admin_id}",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        assert user_reads_admin.status_code == 200
+        assert any(zone["owner_id"] == admin_id for zone in user_reads_admin.json())
+
+        admin_reads_user = await client.get(
+            f"/zones/?owner_id={user_id}",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert admin_reads_user.status_code == 200
+        assert any(zone["owner_id"] == user_id for zone in admin_reads_user.json())
+
+
+@pytest.mark.asyncio
+async def test_contract_zones_lists_private_account_admin_and_user_zones(test_db, override_get_db):
+    """Contract /zones should include linked private admin+user zones for both callers."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin_register = await client.post(
+            "/owners/register",
+            json={
+                "email": "contract-private-admin@example.com",
+                "zone_id": "contract-private-shared-zone",
+                "first_name": "Contract",
+                "last_name": "Admin",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "address": "Admin Address",
+            },
+        )
+        assert admin_register.status_code == 201
+        admin_id = admin_register.json()["id"]
+
+        user_register = await client.post(
+            "/owners/register",
+            json={
+                "email": "contract-private-user@example.com",
+                "zone_id": "contract-private-shared-zone",
+                "first_name": "Contract",
+                "last_name": "User",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user_register.status_code == 201
+
+        admin_login = await client.post(
+            "/owners/login",
+            json={"email": "contract-private-admin@example.com", "password": "SecurePassword123"},
+        )
+        assert admin_login.status_code == 200
+        admin_token = admin_login.json()["access_token"]
+
+        user_login = await client.post(
+            "/owners/login",
+            json={"email": "contract-private-user@example.com", "password": "SecurePassword123"},
+        )
+        assert user_login.status_code == 200
+        user_token = user_login.json()["access_token"]
+
+        admin_create_zone = await client.post(
+            "/zones",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={
+                "id": "C-PRIVATE-ADMIN",
+                "name": "Contract Admin Zone",
+                "type": "warn",
+                "geometry": {},
+                "config": {},
+            },
+        )
+        assert admin_create_zone.status_code == 201
+
+        user_create_zone = await client.post(
+            "/zones",
+            headers={"Authorization": f"Bearer {user_token}"},
+            json={
+                "id": "C-PRIVATE-USER",
+                "name": "Contract User Zone",
+                "type": "warn",
+                "geometry": {},
+                "config": {},
+            },
+        )
+        assert user_create_zone.status_code == 201
+
+        admin_list = await client.get(
+            "/zones",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert admin_list.status_code == 200
+        admin_zone_ids = {zone["id"] for zone in admin_list.json()["data"]}
+        assert {"C-PRIVATE-ADMIN", "C-PRIVATE-USER"}.issubset(admin_zone_ids)
+
+        user_list = await client.get(
+            "/zones",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        assert user_list.status_code == 200
+        user_zone_ids = {zone["id"] for zone in user_list.json()["data"]}
+        assert {"C-PRIVATE-ADMIN", "C-PRIVATE-USER"}.issubset(user_zone_ids)
+
+
+@pytest.mark.asyncio
 async def test_contract_create_zone_accepts_internal_zone_payload_shape(test_db, override_get_db):
     """Contract /zones should accept dashboard/internal style zone payload keys."""
     async with AsyncClient(app=app, base_url="http://test") as client:

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models import Owner, Zone
 from app.models.zone import ZoneType
 from app.core.h3_utils import has_h3_overlap, validate_h3_cell
+from app.services.access_policy import visible_zone_owner_ids
 
 CONTRACT_TO_MODEL_ZONE_TYPE = {
     "polygon": ZoneType.GEOFENCE,
@@ -104,7 +105,12 @@ def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
 
 
 def list_zones(db: Session, owner: Owner) -> list[dict]:
-    zones = db.query(Zone).filter(Zone.owner_id == owner.id, Zone.active.is_(True)).all()
+    owner_ids = visible_zone_owner_ids(db, owner)
+    zones = (
+        db.query(Zone)
+        .filter(Zone.owner_id.in_(owner_ids), Zone.active.is_(True))
+        .all()
+    )
     return [_serialize_zone(zone) for zone in zones]
 
 
