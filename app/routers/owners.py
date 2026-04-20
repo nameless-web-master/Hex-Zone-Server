@@ -191,7 +191,12 @@ async def list_owners(
     return [OwnerResponse.model_validate(_normalize_owner_name(owner)) for owner in owners]
 
 
-@router.patch("/{owner_id}", response_model=OwnerResponse)
+@router.patch(
+    "/{owner_id}",
+    response_model=OwnerResponse,
+    summary="Update owner profile",
+    description="Update caller-owned profile fields such as name, zone reference, or active flag.",
+)
 async def update_owner(
     owner_id: int,
     owner_update: OwnerUpdate,
@@ -216,7 +221,12 @@ async def update_owner(
     return OwnerResponse.model_validate(_normalize_owner_name(updated_owner))
 
 
-@router.delete("/{owner_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{owner_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete owner account",
+    description="Delete the caller-owned account record.",
+)
 async def delete_owner(
     owner_id: int,
     current_user: dict = Depends(get_current_user),

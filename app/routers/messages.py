@@ -10,7 +10,13 @@ from app.core.security import get_current_user
 router = APIRouter(prefix="/messages", tags=["messages"])
 
 
-@router.post("/", response_model=ZoneMessageResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=ZoneMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create zone message",
+    description="Create public/private chat messages scoped to the sender's zone.",
+)
 async def create_message(
     payload: ZoneMessageCreate,
     current_user: dict = Depends(get_current_user),

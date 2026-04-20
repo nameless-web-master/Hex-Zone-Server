@@ -149,7 +149,12 @@ async def list_zones(
     return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
 
 
-@router.get("/{zone_id}", response_model=list[ZoneResponse])
+@router.get(
+    "/{zone_id}",
+    response_model=list[ZoneResponse],
+    summary="Get zones by shared zone ID",
+    description="Return all caller-visible zone records that share the provided zone_id.",
+)
 async def get_zone(
     zone_id: str,
     current_user: dict = Depends(get_current_user),
@@ -224,7 +229,12 @@ async def update_zone(
     return ZoneResponse.model_validate(zone_crud.zone_to_dict(updated_zone))
 
 
-@router.delete("/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{zone_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete zone",
+    description="Delete a zone owned by the authenticated caller.",
+)
 async def delete_zone(
     zone_id: str,
     current_user: dict = Depends(get_current_user),

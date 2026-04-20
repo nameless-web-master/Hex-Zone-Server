@@ -90,7 +90,12 @@ async def list_devices(
     return [DeviceResponse.model_validate(device) for device in devices]
 
 
-@router.post("/{device_id}/heartbeat", response_model=DeviceResponse)
+@router.post(
+    "/{device_id}/heartbeat",
+    response_model=DeviceResponse,
+    summary="Record device heartbeat",
+    description="Update the device online/last_seen presence marker for a caller-visible device.",
+)
 async def device_heartbeat(
     device_id: int,
     current_user: dict = Depends(get_current_user),
@@ -132,7 +137,12 @@ async def get_device(
     return DeviceResponse.model_validate(device)
 
 
-@router.get("/network/hid/{hid}", response_model=DeviceResponse)
+@router.get(
+    "/network/hid/{hid}",
+    response_model=DeviceResponse,
+    summary="Get device by hardware ID",
+    description="Fetch a caller-visible device using hardware identifier (hid).",
+)
 async def get_device_by_hid(
     hid: str,
     current_user: dict = Depends(get_current_user),
@@ -178,7 +188,12 @@ async def update_device(
     return DeviceResponse.model_validate(device)
 
 
-@router.post("/{device_id}/location", response_model=DeviceResponse)
+@router.post(
+    "/{device_id}/location",
+    response_model=DeviceResponse,
+    summary="Update device location",
+    description="Update latitude/longitude/address and recompute H3 cell for a device.",
+)
 async def update_device_location(
     device_id: int,
     location: DeviceLocationUpdate,
@@ -211,7 +226,12 @@ async def update_device_location(
     return DeviceResponse.model_validate(updated_device)
 
 
-@router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{device_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete device",
+    description="Delete a caller-visible device.",
+)
 async def delete_device(
     device_id: int,
     current_user: dict = Depends(get_current_user),

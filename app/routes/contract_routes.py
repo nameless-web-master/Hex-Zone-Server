@@ -295,12 +295,21 @@ async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     return success_response(data)
 
 
-@router.get("/zones")
+@router.get(
+    "/zones",
+    summary="List contract zones",
+    description="Return zones accessible to the authenticated contract user.",
+)
 async def get_zones(owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
     return success_response(controllers.list_zones(db, owner))
 
 
-@router.get("/me", response_model=ContractSuccessOwnerMeResponse)
+@router.get(
+    "/me",
+    response_model=ContractSuccessOwnerMeResponse,
+    summary="Get contract profile",
+    description="Return the authenticated owner profile used by mobile client bootstrap.",
+)
 async def get_me(owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
     location = db.get(MemberLocation, owner.id)
     map_center = None
@@ -357,7 +366,11 @@ async def post_zones(
     return success_response(data)
 
 
-@router.put("/zones/{zone_id}")
+@router.put(
+    "/zones/{zone_id}",
+    summary="Update contract zone",
+    description="Replace/update an existing zone definition for setup wizard flows.",
+)
 async def put_zone(
     zone_id: str,
     payload: ZoneUpsertRequest,
@@ -369,7 +382,11 @@ async def put_zone(
     return success_response(data)
 
 
-@router.delete("/zones/{zone_id}")
+@router.delete(
+    "/zones/{zone_id}",
+    summary="Delete contract zone",
+    description="Delete an existing contract-managed zone by shared zone id.",
+)
 async def remove_zone(zone_id: str, owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
     controllers.delete_zone(db, owner, zone_id)
     db.commit()
@@ -383,20 +400,19 @@ async def remove_zone(zone_id: str, owner: Owner = Depends(require_auth), db: Se
     description="Create and broadcast message events to zone subscribers.",
 )
 async def post_messages(
-    payload: dict[str, Any] = Body(...),
+    payload: MessageCreateRequest | ChatMessageCreateRequest = Body(...),
     owner: Owner = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
     # Backward-compatible contract payload.
-    if all(key in payload for key in ("zoneId", "type", "text")):
-        contract_payload = MessageCreateRequest.model_validate(payload)
-        data = controllers.create_message(db, owner, contract_payload.model_dump())
+    if isinstance(payload, MessageCreateRequest):
+        data = controllers.create_message(db, owner, payload.model_dump())
         db.commit()
-        await ws_manager.broadcast_message(contract_payload.zoneId, data)
+        await ws_manager.broadcast_message(payload.zoneId, data)
         return success_response(data)
 
     # Compatibility path for clients sending the chat payload shape.
-    chat_payload = ChatMessageCreateRequest.model_validate(payload)
+    chat_payload = payload
     sender = owner_crud.get_owner(db, owner.id)
     if not sender:
         raise HTTPException(
@@ -451,7 +467,11 @@ async def post_messages(
     )
 
 
-@router.get("/messages/new")
+@router.get(
+    "/messages/new",
+    summary="Get new contract messages",
+    description="Return messages created after the supplied ISO datetime cursor.",
+)
 async def get_new_messages(since: str = Query(...), db: Session = Depends(get_db), owner: Owner = Depends(require_auth)):
     _ = owner
     return success_response(controllers.get_new_messages(db, since))
@@ -490,7 +510,11 @@ async def post_member_location(
     return success_response(data)
 
 
-@router.post("/devices/push-token")
+@router.post(
+    "/devices/push-token",
+    summary="Register push token",
+    description="Register or update a mobile push token for the authenticated owner.",
+)
 async def post_push_token(
     payload: PushTokenRequest,
     owner: Owner = Depends(require_auth),
