@@ -812,3 +812,33 @@ async def test_contract_create_zone_accepts_internal_zone_payload_shape(test_db,
         )
         assert created is not None
         assert created.geo_fence_polygon is not None
+
+
+@pytest.mark.asyncio
+async def test_create_device_duplicate_hid_returns_conflict(test_db, override_get_db):
+    """Creating a device with duplicate hid should return 409, not 500."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, owner_token = await _register_and_login(
+            client,
+            email="device-owner@example.com",
+            zone_id="device-zone",
+            first_name="Device",
+            last_name="Owner",
+        )
+        headers = {"Authorization": f"Bearer {owner_token}"}
+        payload = {
+            "hid": "WEB-RFEQHBAH",
+            "name": "John Smith (Web)",
+            "latitude": 0.0,
+            "longitude": 0.0,
+            "address": "Unknown",
+        }
+
+        first = await client.post("/devices/", headers=headers, json=payload)
+        assert first.status_code == 201
+
+        duplicate = await client.post("/devices/", headers=headers, json=payload)
+        assert duplicate.status_code == 409
+        body = duplicate.json()
+        message = body.get("detail") or body.get("error", {}).get("message", "")
+        assert "already exists" in str(message).lower()

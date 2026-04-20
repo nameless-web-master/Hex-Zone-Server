@@ -1,5 +1,6 @@
 """Router for Device endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.schemas import (
@@ -32,6 +33,11 @@ def _caller_visibility(db: Session, user_id: int) -> list[int]:
     status_code=status.HTTP_201_CREATED,
     summary="Create device",
     description="Create a device under the authenticated owner account.",
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "description": "A device with the same hardware id already exists.",
+        },
+    },
 )
 async def create_device(
     device: DeviceCreate,
@@ -39,8 +45,22 @@ async def create_device(
     db: Session = Depends(get_db),
 ):
     """Create a new device for the current owner."""
-    db_device = device_crud.create_device(db, current_user["user_id"], device)
-    db.commit()
+    try:
+        db_device = device_crud.create_device(db, current_user["user_id"], device)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        error_text = str(getattr(exc, "orig", exc)).lower()
+        if (
+            "ix_devices_hid" in error_text
+            or "devices_hid_key" in error_text
+            or ("unique" in error_text and "hid" in error_text)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Device hid '{device.hid}' already exists",
+            ) from exc
+        raise
     return DeviceResponse.model_validate(db_device)
 
 
