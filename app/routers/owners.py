@@ -9,10 +9,15 @@ from app.schemas.schemas import (
     OwnerDetailResponse,
     LoginRequest,
     TokenResponse,
+    OwnerRoleEnum,
 )
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user, verify_password, create_access_token
 from app.services.access_policy import resolve_account_owner_id, visible_owner_ids
+from app.services.registration_code_service import (
+    mint_registration_code,
+    require_and_consume_admin_registration_code,
+)
 from datetime import timedelta
 
 router = APIRouter(prefix="/owners", tags=["owners"])
@@ -31,7 +36,9 @@ def _normalize_owner_name(owner):
     summary="Register account",
     description=(
         "Create an administrator/user account from setup wizard inputs. "
-        "Supports all account tiers and links user registrations to an account owner."
+        "Supports all account tiers and links user registrations to an account owner. "
+        "Administrators must include registration_code: echo GET /utils/registration-code "
+        "(preferred) or GET /owners/registration-code, or use tier code FREE (stateless)."
     ),
     response_description="Registered account profile with API key",
 )
@@ -55,6 +62,9 @@ async def register_owner(
         zone_id=owner.zone_id,
         account_type=owner.account_type.value,
     )
+
+    if owner.role == OwnerRoleEnum.ADMINISTRATOR:
+        require_and_consume_admin_registration_code(db, owner.registration_code)
 
     # Create owner
     db_owner = owner_crud.create_owner(db, owner)
@@ -106,6 +116,20 @@ async def login(
         token_type="bearer",
         owner_id=owner.id,
     )
+
+
+@router.get(
+    "/registration-code",
+    summary="Issue registration code (owners alias)",
+    description=(
+        "Same as GET /utils/registration-code: public, unauthenticated, returns a single-use "
+        "registration code for administrator signup. Prefer /utils/registration-code when available."
+    ),
+)
+async def issue_owners_registration_code(db: Session = Depends(get_db)):
+    code = mint_registration_code(db)
+    db.commit()
+    return {"registration_code": code}
 
 
 @router.get(

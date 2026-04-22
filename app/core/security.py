@@ -67,3 +67,8 @@ def generate_api_key() -> str:
 def generate_qr_token() -> str:
     """Generate a QR registration token."""
     return secrets.token_urlsafe(16)
+
+
+def generate_registration_code_token() -> str:
+    """Generate a server-issued registration code for setup wizard flows."""
+    return secrets.token_urlsafe(24)

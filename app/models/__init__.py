@@ -3,6 +3,7 @@ from app.models.owner import Owner
 from app.models.device import Device
 from app.models.zone import Zone
 from app.models.qr_registration import QRRegistration
+from app.models.registration_code import RegistrationCode
 from app.models.message import Message
 from app.models.member_location import MemberLocation
 from app.models.push_token import PushToken
@@ -13,6 +14,7 @@ __all__ = [
     "Device",
     "Zone",
     "QRRegistration",
+    "RegistrationCode",
     "Message",
     "MemberLocation",
     "PushToken",

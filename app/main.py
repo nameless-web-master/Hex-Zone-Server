@@ -34,7 +34,11 @@ OPENAPI_TAGS = [
     },
     {
         "name": "owners",
-        "description": "Registration, login, and owner profile management.",
+        "description": (
+            "Registration, login, and owner profile management. Public GET "
+            "/owners/registration-code issues administrator signup codes; POST /owners/register "
+            "requires registration_code for administrator role."
+        ),
     },
     {
         "name": "zones",
@@ -53,7 +57,10 @@ OPENAPI_TAGS = [
     },
     {
         "name": "utilities",
-        "description": "Helper endpoints for H3 conversion and QR registration flows.",
+        "description": (
+            "Helper endpoints for H3 conversion, QR registration flows, and public issuance of "
+            "single-use administrator registration codes (GET /utils/registration-code)."
+        ),
     },
     {
         "name": "contract",
@@ -72,8 +79,12 @@ app = FastAPI(
         "including registration, account login, zone provisioning, access scheduling, "
         "QR-based onboarding, and zone messaging.\n\n"
         "Primary flow references:\n"
-        "- Administrator registration: reg-code + account + Main Zone + access-point setup.\n"
-        "- User registration: account + optional Zone #2/#3 + schedule access + request access.\n"
+        "- Administrator registration: registration code + account + Main Zone + access-point setup. "
+        "Fetch a code with GET /utils/registration-code (preferred) or GET /owners/registration-code, "
+        "then send it as registrationCode on POST /register or registration_code on POST /owners/register. "
+        "The tier code FREE is also accepted for administrators without calling GET (stateless).\n"
+        "- User registration: account + optional Zone #2/#3 + schedule access + request access "
+        "(no registration code required).\n"
         "- Login: email/username and password authentication."
     ),
     version=settings.API_VERSION,

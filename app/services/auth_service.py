@@ -8,6 +8,7 @@ from app.core.security import create_access_token, generate_api_key, get_passwor
 from app.models import Device, MemberLocation, Owner
 from app.models.owner import OwnerRole
 from app.services.access_policy import resolve_account_owner_id
+from app.services.registration_code_service import require_and_consume_admin_registration_code
 
 
 def _to_contract_account_type(account_type: str) -> str:
@@ -77,6 +78,8 @@ def register_user(db: Session, payload: dict) -> dict:
     first_name, last_name = _split_name(payload["name"])
     account_type_value = _to_contract_account_type(payload["accountType"]).lower()
     role_value = _to_owner_role(payload.get("registrationType"))
+    if role_value == OwnerRole.ADMINISTRATOR:
+        require_and_consume_admin_registration_code(db, payload.get("registrationCode"))
     account_owner_id = resolve_account_owner_id(
         db,
         role=role_value.value,

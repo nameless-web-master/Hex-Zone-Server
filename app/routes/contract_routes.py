@@ -37,6 +37,15 @@ class RegisterRequest(BaseModel):
     name: str = Field(min_length=1, description="First and last name from setup wizard")
     email: EmailStr
     password: str = Field(min_length=8)
+    registrationCode: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Required when registrationType is ADMINISTRATOR: echo the code from "
+            "GET /utils/registration-code (preferred) or GET /owners/registration-code, "
+            "or tier code FREE (stateless; always accepted for admin signup)."
+        ),
+    )
     accountType: Literal["PRIVATE", "PRIVATE_PLUS", "EXCLUSIVE", "ENHANCED", "ENHANCED_PLUS"]
     registrationType: Literal["ADMINISTRATOR", "USER"] = "ADMINISTRATOR"
     accountOwnerId: int | None = Field(
@@ -88,6 +97,7 @@ class RegisterRequest(BaseModel):
                 "registrationType": "ADMINISTRATOR",
                 "zoneId": "ZONE-7A29",
                 "address": "101 Main St, Denver, CO, USA",
+                "registrationCode": "FREE",
             }
         }
     }
@@ -286,7 +296,10 @@ async def login(payload: LoginRequest, db: Session = Depends(get_db)):
     summary="Contract register",
     description=(
         "Mobile registration endpoint for administrator/user onboarding. Supports all "
-        "5 account tiers, role-aware registration, and account owner linking for users."
+        "5 account tiers, role-aware registration, and account owner linking for users. "
+        "Administrators must submit registrationCode: either echo the single-use string "
+        "from GET /utils/registration-code (or GET /owners/registration-code) or the "
+        "stateless tier code FREE. User registrations do not require a registration code."
     ),
 )
 async def register(payload: RegisterRequest, db: Session = Depends(get_db)):

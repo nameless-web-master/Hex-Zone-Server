@@ -53,6 +53,7 @@ async def test_owner_registration(test_db, override_get_db):
                 "last_name": "User",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "registration_code": "FREE",
                 "address": "Test Address 1",
             },
         )
@@ -82,6 +83,7 @@ async def test_owner_registration_duplicate_email(test_db, override_get_db):
                 "last_name": "User",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "registration_code": "FREE",
                 "address": "Test Address 1",
             },
         )
@@ -96,6 +98,7 @@ async def test_owner_registration_duplicate_email(test_db, override_get_db):
                 "last_name": "User2",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "registration_code": "FREE",
                 "address": "Test Address 2",
             },
         )
@@ -118,6 +121,7 @@ async def test_owner_login(test_db, override_get_db):
                 "last_name": "User",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "registration_code": "FREE",
                 "address": "Test Address 1",
             },
         )
@@ -152,6 +156,7 @@ async def test_owner_login_invalid_password(test_db, override_get_db):
                 "last_name": "User",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "registration_code": "FREE",
                 "address": "Test Address 1",
             },
         )
@@ -315,6 +320,7 @@ async def _register_and_login(
             "last_name": last_name,
             "account_type": "private",
             "password": "SecurePassword123",
+            "registration_code": "FREE",
             "address": "Test Address 1",
         },
     )
@@ -516,6 +522,7 @@ async def test_post_contract_messages_still_returns_201(test_db, override_get_db
                 "last_name": "User",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "registration_code": "FREE",
                 "address": "Addr",
             },
         )
@@ -623,6 +630,7 @@ def test_websocket_ws_messages_alias_accepts_valid_token(test_db, override_get_d
                 "last_name": "Alias",
                 "account_type": "private",
                 "password": "SecurePassword123",
+                "registration_code": "FREE",
                 "address": "Addr",
             },
         )
@@ -773,6 +781,7 @@ async def test_private_admin_and_user_can_view_each_others_zones(test_db, overri
                 "account_type": "private",
                 "role": "administrator",
                 "password": "SecurePassword123",
+                "registration_code": "FREE",
                 "address": "Admin Address",
             },
         )
@@ -865,6 +874,7 @@ async def test_contract_zones_lists_private_account_admin_and_user_zones(test_db
                 "account_type": "private",
                 "role": "administrator",
                 "password": "SecurePassword123",
+                "registration_code": "FREE",
                 "address": "Admin Address",
             },
         )
@@ -1032,3 +1042,137 @@ async def test_create_device_duplicate_hid_returns_conflict(test_db, override_ge
         body = duplicate.json()
         message = body.get("detail") or body.get("error", {}).get("message", "")
         assert "already exists" in str(message).lower()
+
+
+def _http_error_message(body: dict) -> str:
+    if isinstance(body.get("detail"), str):
+        return body["detail"]
+    return str((body.get("error") or {}).get("message", ""))
+
+
+@pytest.mark.asyncio
+async def test_get_utils_registration_code_returns_string(test_db, override_get_db):
+    """GET /utils/registration-code should mint a non-empty code (no auth)."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        r = await client.get("/utils/registration-code")
+        assert r.status_code == 200
+        data = r.json()
+        code = data.get("registration_code") or data.get("registrationCode") or data.get("code")
+        assert isinstance(code, str)
+        assert len(code) > 0
+
+
+@pytest.mark.asyncio
+async def test_get_owners_registration_code_returns_string(test_db, override_get_db):
+    """GET /owners/registration-code should mirror utils behavior."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        r = await client.get("/owners/registration-code")
+        assert r.status_code == 200
+        data = r.json()
+        code = data.get("registration_code") or data.get("registrationCode") or data.get("code")
+        assert isinstance(code, str)
+        assert len(code) > 0
+
+
+@pytest.mark.asyncio
+async def test_admin_register_without_registration_code_rejected(test_db, override_get_db):
+    """Administrator self-registration must include a registration code."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        r = await client.post(
+            "/owners/register",
+            json={
+                "email": "nocode-admin@example.com",
+                "zone_id": "zone-nocode",
+                "first_name": "No",
+                "last_name": "Code",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "address": "Addr",
+            },
+        )
+        assert r.status_code == 400
+        assert "registration code" in _http_error_message(r.json()).lower()
+
+
+@pytest.mark.asyncio
+async def test_admin_register_with_minted_code_succeeds_once(test_db, override_get_db):
+    """Echo minted GET code on register; second attempt with same code fails."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        code = (await client.get("/utils/registration-code")).json()["registration_code"]
+        first = await client.post(
+            "/owners/register",
+            json={
+                "email": "minted-1@example.com",
+                "zone_id": "zone-minted-1",
+                "first_name": "Minted",
+                "last_name": "One",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": code,
+                "address": "Addr",
+            },
+        )
+        assert first.status_code == 201
+
+        second = await client.post(
+            "/owners/register",
+            json={
+                "email": "minted-2@example.com",
+                "zone_id": "zone-minted-2",
+                "first_name": "Minted",
+                "last_name": "Two",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": code,
+                "address": "Addr",
+            },
+        )
+        assert second.status_code == 400
+        assert "invalid" in _http_error_message(second.json()).lower() or "used" in _http_error_message(
+            second.json()
+        ).lower()
+
+
+@pytest.mark.asyncio
+async def test_contract_register_admin_requires_registration_code(test_db, override_get_db):
+    """POST /register (contract) requires registrationCode for administrator."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        r = await client.post(
+            "/register",
+            json={
+                "name": "Contract Admin",
+                "email": "contract-nocode@example.com",
+                "password": "SecurePassword123",
+                "accountType": "PRIVATE",
+                "registrationType": "ADMINISTRATOR",
+                "zoneId": "ZONE-C1",
+                "address": "Addr",
+            },
+        )
+        assert r.status_code == 400
+        assert "registration code" in _http_error_message(r.json()).lower()
+
+
+@pytest.mark.asyncio
+async def test_contract_register_admin_with_free_succeeds(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        r = await client.post(
+            "/register",
+            json={
+                "name": "Contract Admin",
+                "email": "contract-free@example.com",
+                "password": "SecurePassword123",
+                "accountType": "PRIVATE",
+                "registrationType": "ADMINISTRATOR",
+                "registrationCode": "FREE",
+                "zoneId": "ZONE-C2",
+                "address": "Addr",
+            },
+        )
+        assert r.status_code == 201
+        body = r.json()
+        assert body.get("status") == "success"
+        assert body["data"]["email"] == "contract-free@example.com"

@@ -14,9 +14,38 @@ from app.core.h3_utils import lat_lng_to_h3_cell
 from app.core.security import get_current_user
 from app.crud import qr_registration as qr_crud
 from app.crud import owner as owner_crud
+from app.services.registration_code_service import mint_registration_code
 from fastapi import HTTPException, status
 
 router = APIRouter(prefix="/utils", tags=["utilities"])
+
+
+@router.get(
+    "/registration-code",
+    summary="Issue registration code",
+    description=(
+        "Public endpoint (no Authorization). Returns a single-use registration code string "
+        "for administrator self-registration. Send the same value as registrationCode on "
+        "POST /register (contract) or registration_code on POST /owners/register. "
+        "Codes expire after REGISTRATION_CODE_EXPIRE_HOURS (default 24). "
+        "The tier code FREE is also accepted on those POST routes without calling this endpoint."
+    ),
+    responses={
+        200: {
+            "description": "Plain object with registration_code, or alternate keys per client parser.",
+            "content": {
+                "application/json": {
+                    "example": {"registration_code": "url-safe-token-or-tier-FREE"}
+                }
+            },
+        }
+    },
+)
+async def issue_utils_registration_code(db: Session = Depends(get_db)):
+    """Mint a DB-backed registration code (same semantics as GET /owners/registration-code)."""
+    code = mint_registration_code(db)
+    db.commit()
+    return {"registration_code": code}
 
 
 @router.post(

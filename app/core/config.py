@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     # Account
     MAX_ZONES_PER_USER: int = 3
+    REGISTRATION_CODE_EXPIRE_HOURS: int = 24
 
     # Geocoding (placeholder for future integration)
     GEOCODING_PROVIDER: str = "nominatim"

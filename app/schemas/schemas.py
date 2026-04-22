@@ -73,6 +73,16 @@ class OwnerCreate(BaseModel):
     )
     phone: Optional[str] = Field(None, max_length=20, description="Telephone")
     password: str = Field(..., min_length=8, description="Account password")
+    registration_code: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Required for administrator self-registration: echo the code from "
+            "GET /utils/registration-code (preferred) or GET /owners/registration-code, "
+            "or tier code FREE (stateless; always accepted for admin signup). "
+            "Not required for user role joining an existing account."
+        ),
+    )
 
     @model_validator(mode="after")
     def map_name_to_split_fields(self):
@@ -105,6 +115,7 @@ class OwnerCreate(BaseModel):
                 "address": "101 Main St, Denver, CO, USA",
                 "phone": "+1-303-555-0114",
                 "password": "strong-password-123",
+                "registration_code": "FREE",
             }
         }
     }
