@@ -1,7 +1,7 @@
 """Server-issued registration codes for administrator self-service signup."""
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
 
 from app.database import Base
 
@@ -11,17 +11,15 @@ class RegistrationCode(Base):
 
     __tablename__ = "registration_codes"
 
-    id = Column(Integer, primary_key=True, index=True)
-    code = Column(String(255), unique=True, nullable=False, index=True)
+    id = Column(Integer, primary_key=True)
+    # unique=True creates the unique index/constraint. Do not also set index=True or add
+    # Index("ix_registration_codes_code", ...) — that duplicates the same ix_* name and
+    # makes PostgreSQL raise "relation ... already exists" during create_all().
+    code = Column(String(255), unique=True, nullable=False)
     used = Column(Boolean, default=False, nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
-    expires_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    __table_args__ = (
-        Index("ix_registration_codes_code", "code"),
-        Index("ix_registration_codes_expires_at", "expires_at"),
-    )
 
     def is_expired(self) -> bool:
         return datetime.utcnow() > self.expires_at
