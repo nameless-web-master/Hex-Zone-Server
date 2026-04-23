@@ -38,6 +38,15 @@ def _geojson_to_geometry(geojson: Optional[dict]):
     return f"SRID=4326;{wkt}"
 
 
+def _sync_parameters_h3_cells(db_zone: Zone) -> None:
+    """Keep parameters.config.h3Cells aligned with zone.h3_cells."""
+    params = db_zone.parameters if isinstance(db_zone.parameters, dict) else {}
+    config = params.get("config") if isinstance(params.get("config"), dict) else {}
+    config["h3Cells"] = list(db_zone.h3_cells or [])
+    params["config"] = config
+    db_zone.parameters = params
+
+
 def create_zone(db: Session, owner_id: int, creator_id: int, zone: ZoneCreate) -> Zone:
     """Create a new zone."""
     h3_cells = zone.h3_cells.copy()
@@ -70,6 +79,7 @@ def create_zone(db: Session, owner_id: int, creator_id: int, zone: ZoneCreate) -
         geo_fence_polygon=geo_fence_polygon,
         parameters=zone.parameters or {},
     )
+    _sync_parameters_h3_cells(db_zone)
     db.add(db_zone)
     db.flush()
     db.refresh(db_zone)
@@ -249,7 +259,10 @@ def update_zone(
                 continue
             value = _geojson_to_geometry(value)
         setattr(db_zone, field, value)
-    
+
+    if "h3_cells" in update_data:
+        _sync_parameters_h3_cells(db_zone)
+
     db.flush()
     db.refresh(db_zone)
     return db_zone
@@ -282,6 +295,9 @@ def update_zone_by_record_id(
                 continue
             value = _geojson_to_geometry(value)
         setattr(db_zone, field, value)
+
+    if "h3_cells" in update_data:
+        _sync_parameters_h3_cells(db_zone)
 
     db.flush()
     db.refresh(db_zone)
