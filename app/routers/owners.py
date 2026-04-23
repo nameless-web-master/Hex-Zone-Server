@@ -172,7 +172,7 @@ async def get_owner(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Caller not found",
         )
-    allowed_ids = visible_owner_ids(db, caller)
+    allowed_ids = visible_owner_ids(db, caller, include_inactive=True)
     if owner_id not in allowed_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -211,7 +211,7 @@ async def list_owners(
             detail="Caller not found",
         )
 
-    allowed_ids = visible_owner_ids(db, caller)
+    allowed_ids = visible_owner_ids(db, caller, include_inactive=True)
     owners = owner_crud.list_owners(db, skip=skip, limit=limit)
     owners = [owner for owner in owners if owner.id in allowed_ids]
     return [OwnerResponse.model_validate(_normalize_owner_name(owner)) for owner in owners]
@@ -255,7 +255,7 @@ async def update_owner(
         )
 
     if is_admin and current_user["user_id"] != owner_id:
-        allowed_ids = visible_owner_ids(db, caller)
+        allowed_ids = visible_owner_ids(db, caller, include_inactive=True)
         if owner_id not in allowed_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

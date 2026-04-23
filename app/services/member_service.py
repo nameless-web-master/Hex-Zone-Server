@@ -23,7 +23,7 @@ def upsert_member_location(db: Session, owner_id: int, latitude: float, longitud
 
 
 def list_members(db: Session, owner: Owner, active: bool | None = None) -> list[dict]:
-    owner_ids = visible_owner_ids(db, owner)
+    owner_ids = visible_owner_ids(db, owner, include_inactive=True)
     query = db.query(Owner).filter(Owner.id.in_(owner_ids))
     if active is not None:
         query = query.filter(Owner.active.is_(active))

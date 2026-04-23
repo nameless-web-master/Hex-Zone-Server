@@ -63,20 +63,16 @@ def resolve_account_owner_id(
     return account_owner.id
 
 
-def visible_owner_ids(db: Session, owner: Owner) -> list[int]:
+def visible_owner_ids(db: Session, owner: Owner, include_inactive: bool = False) -> list[int]:
     """Return owners visible to caller based on role/account type rules."""
     if owner.role.value == "user":
         return [owner.id]
 
     root_id = account_root_id(owner)
-    rows = (
-        db.query(Owner.id)
-        .filter(
-            Owner.account_owner_id == root_id,
-            Owner.active.is_(True),
-        )
-        .all()
-    )
+    query = db.query(Owner.id).filter(Owner.account_owner_id == root_id)
+    if not include_inactive:
+        query = query.filter(Owner.active.is_(True))
+    rows = query.all()
     owner_ids = [row[0] for row in rows]
     if owner.id not in owner_ids:
         owner_ids.append(owner.id)
