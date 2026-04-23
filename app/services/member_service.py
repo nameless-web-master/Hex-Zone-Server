@@ -22,9 +22,12 @@ def upsert_member_location(db: Session, owner_id: int, latitude: float, longitud
     return {"latitude": row.latitude, "longitude": row.longitude, "zones": zone_ids}
 
 
-def list_members(db: Session, owner: Owner) -> list[dict]:
+def list_members(db: Session, owner: Owner, active: bool | None = True) -> list[dict]:
     owner_ids = visible_owner_ids(db, owner)
-    members = db.query(Owner).filter(Owner.id.in_(owner_ids), Owner.active.is_(True)).all()
+    query = db.query(Owner).filter(Owner.id.in_(owner_ids))
+    if active is not None:
+        query = query.filter(Owner.active.is_(active))
+    members = query.all()
     output: list[dict] = []
     for member in members:
         location = db.get(MemberLocation, member.id)
@@ -48,6 +51,7 @@ def list_members(db: Session, owner: Owner) -> list[dict]:
                 "last_name": member.last_name,
                 "address": member.address,
                 "zone_id": member.zone_id,
+                "active": member.active,
                 "location": None
                 if not location
                 else {"latitude": location.latitude, "longitude": location.longitude},

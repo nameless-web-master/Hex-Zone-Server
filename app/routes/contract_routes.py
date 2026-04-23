@@ -175,6 +175,7 @@ class MemberListItemResponse(BaseModel):
     last_name: str
     address: str
     zone_id: str
+    active: bool
     location: MemberLocationResponse | None = None
     lastSeen: str | None = None
     zones: list[str] = Field(default_factory=list)
@@ -500,13 +501,21 @@ async def get_new_messages(since: str = Query(...), db: Session = Depends(get_db
     response_model=ContractSuccessMembersResponse,
     summary="List members visible to caller",
     description=(
-        "Returns active owners visible to the caller based on account role policy. "
+        "Returns owners visible to the caller based on account role policy. "
         "Administrators see all members in their account; users see only themselves. "
-        "Each item includes profile fields, optional location snapshot, and active zones."
+        "Filter by active state using query parameter active=true/false. "
+        "Each item includes profile fields, active state, optional location snapshot, and active zones."
     ),
 )
-async def get_members(owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
-    return success_response(controllers.get_members(db, owner))
+async def get_members(
+    active: bool | None = Query(
+        default=True,
+        description="Filter by member active state. Use false to list inactive members.",
+    ),
+    owner: Owner = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    return success_response(controllers.get_members(db, owner, active=active))
 
 
 @router.post(

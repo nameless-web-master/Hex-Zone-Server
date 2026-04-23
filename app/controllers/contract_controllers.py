@@ -38,8 +38,8 @@ def update_location(db, owner, latitude: float, longitude: float) -> dict:
     return member_service.upsert_member_location(db, owner.id, latitude, longitude)
 
 
-def get_members(db, owner) -> list[dict]:
-    return member_service.list_members(db, owner)
+def get_members(db, owner, active: bool | None = True) -> list[dict]:
+    return member_service.list_members(db, owner, active=active)
 
 
 def register_push_token(db, owner, token: str, platform: str) -> dict:
