@@ -44,7 +44,16 @@ class Owner(Base):
 
     # Relationships
     devices = relationship("Device", back_populates="owner", cascade="all, delete-orphan")
-    zones = relationship("Zone", back_populates="owner", cascade="all, delete-orphan")
+    zones = relationship(
+        "Zone",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        foreign_keys="Zone.owner_id",
+    )
+    created_zones = relationship(
+        "Zone",
+        foreign_keys="Zone.creator_id",
+    )
     qr_registrations = relationship("QRRegistration", back_populates="owner", cascade="all, delete-orphan")
     sent_messages = relationship(
         "Message",

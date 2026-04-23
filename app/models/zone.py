@@ -69,8 +69,8 @@ class Zone(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
-    owner = relationship("Owner", back_populates="zones")
-    creator = relationship("Owner", foreign_keys=[creator_id])
+    owner = relationship("Owner", back_populates="zones", foreign_keys=[owner_id])
+    creator = relationship("Owner", foreign_keys=[creator_id], back_populates="created_zones")
 
     @validates("geo_fence_polygon")
     def validate_geo_fence_polygon(self, key, value):
