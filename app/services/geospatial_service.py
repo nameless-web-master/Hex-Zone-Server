@@ -1,5 +1,6 @@
-"""Geospatial evaluation using H3 and PostGIS-compatible data."""
-from typing import Iterable
+"""Geospatial evaluation using H3, dynamic circles, and PostGIS-compatible data."""
+from math import atan2, cos, radians, sin, sqrt
+from typing import Any, Iterable
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -37,4 +38,94 @@ def evaluate_member_zones(db: Session, latitude: float, longitude: float, candid
     for row in db.execute(postgis_sql, {"owner_ids": owner_ids, "longitude": longitude, "latitude": latitude}):
         matched.add(row[0])
 
+    # Dynamic zones can define multiple circles in geometry/config payloads.
+    dynamic_candidates = (
+        db.query(Zone)
+        .filter(Zone.owner_id.in_(owner_ids), Zone.active.is_(True))
+        .all()
+    )
+    for zone in dynamic_candidates:
+        if _point_in_dynamic_zone(zone, latitude, longitude):
+            matched.add(zone.zone_id)
+
     return sorted(matched)
+
+
+def _point_in_dynamic_zone(zone: Zone, latitude: float, longitude: float) -> bool:
+    params = zone.parameters if isinstance(zone.parameters, dict) else {}
+    contract_type = str(params.get("contractType") or "").strip().lower()
+    if contract_type != "dynamic":
+        return False
+
+    geometry = params.get("geometry") if isinstance(params.get("geometry"), dict) else {}
+    config = params.get("config") if isinstance(params.get("config"), dict) else {}
+    circle_specs = _extract_dynamic_circle_specs(geometry, config)
+    if not circle_specs:
+        return False
+
+    for circle in circle_specs:
+        center = circle.get("center")
+        min_radius = circle.get("min_radius_meters")
+        max_radius = circle.get("max_radius_meters")
+        if not isinstance(center, dict):
+            continue
+        c_lat = center.get("latitude")
+        c_lng = center.get("longitude")
+        if not isinstance(c_lat, (int, float)) or not isinstance(c_lng, (int, float)):
+            continue
+        if not isinstance(min_radius, (int, float)) or not isinstance(max_radius, (int, float)):
+            continue
+        if min_radius < 0 or max_radius < min_radius:
+            continue
+
+        distance = _haversine_meters(latitude, longitude, float(c_lat), float(c_lng))
+        if min_radius <= distance <= max_radius:
+            return True
+    return False
+
+
+def _extract_dynamic_circle_specs(geometry: dict[str, Any], config: dict[str, Any]) -> list[dict[str, Any]]:
+    circles = geometry.get("circles")
+    if isinstance(circles, list):
+        normalized = [circle for circle in circles if isinstance(circle, dict)]
+        if normalized:
+            return normalized
+
+    centers = geometry.get("centers")
+    circle_ranges = config.get("circle_ranges")
+    if isinstance(centers, list) and isinstance(circle_ranges, list):
+        pairs: list[dict[str, Any]] = []
+        for center, radius_range in zip(centers, circle_ranges):
+            if isinstance(center, dict) and isinstance(radius_range, dict):
+                pairs.append(
+                    {
+                        "center": center,
+                        "min_radius_meters": radius_range.get("min_radius_meters"),
+                        "max_radius_meters": radius_range.get("max_radius_meters"),
+                    }
+                )
+        if pairs:
+            return pairs
+
+    center = geometry.get("center")
+    min_radius = config.get("min_radius_meters")
+    max_radius = config.get("max_radius_meters")
+    if isinstance(center, dict) and isinstance(min_radius, (int, float)) and isinstance(max_radius, (int, float)):
+        return [
+            {
+                "center": center,
+                "min_radius_meters": min_radius,
+                "max_radius_meters": max_radius,
+            }
+        ]
+    return []
+
+
+def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Compute great-circle distance in meters."""
+    earth_radius_m = 6_371_000.0
+    d_lat = radians(lat2 - lat1)
+    d_lon = radians(lon2 - lon1)
+    a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return earth_radius_m * c
