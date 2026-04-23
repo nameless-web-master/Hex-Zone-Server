@@ -120,8 +120,24 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
 @app.exception_handler(HTTPException)
 async def handle_http_error(request: Request, exc: HTTPException) -> JSONResponse:
     _ = request
-    message = str(exc.detail) if exc.detail else "Request failed"
-    return JSONResponse(status_code=exc.status_code, content=error_response(message))
+    detail = exc.detail
+    if isinstance(detail, dict):
+        message = str(detail.get("message") or "Request failed")
+        error_code = str(detail.get("error_code") or f"HTTP_{exc.status_code}")
+        details = detail.get("details")
+    else:
+        message = str(detail) if detail else "Request failed"
+        error_code = f"HTTP_{exc.status_code}"
+        details = None
+
+    payload = {
+        "status": "error",
+        "message": message,
+        "error_code": error_code,
+    }
+    if details is not None:
+        payload["details"] = details
+    return JSONResponse(status_code=exc.status_code, content=payload)
 
 # Include routers
 app.include_router(owners.router)

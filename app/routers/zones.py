@@ -1,20 +1,18 @@
 """Router for Zone endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from typing import Any, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
-from typing import Optional
-from app.database import get_db
-from app.schemas.schemas import (
-    AccountTypeEnum,
-    ZoneCreate,
-    ZoneResponse,
-    ZoneUpdate,
-)
-from app.crud import zone as zone_crud
-from app.crud import owner as owner_crud
-from app.core.security import get_current_user
-from app.models import Owner
+
 from app.core.config import settings
+from app.core.h3_utils import has_h3_overlap, validate_h3_cell
+from app.core.security import get_current_user
+from app.crud import owner as owner_crud
+from app.crud import zone as zone_crud
+from app.database import get_db
+from app.models.zone import Zone, ZoneType
+from app.schemas.schemas import AccountTypeEnum
 from app.services.access_policy import visible_zone_owner_ids
 
 router = APIRouter(prefix="/zones", tags=["zones"])
@@ -25,6 +23,400 @@ PRIVATE_ZONE_TYPES = {
     "geofence",
 }
 
+CANONICAL_ZONE_TYPES = {
+    "geofence",
+    "warn",
+    "alert",
+    "restricted",
+    "proximity",
+    "dynamic",
+    "custom_1",
+    "custom_2",
+}
+
+ZONE_TYPE_ALIASES = {
+    "polygon": "geofence",
+    "circle": "warn",
+    "grid": "alert",
+    "object": "custom_2",
+}
+
+CANONICAL_TO_MODEL_ZONE_TYPE = {
+    "geofence": ZoneType.GEOFENCE,
+    "warn": ZoneType.WARN,
+    "alert": ZoneType.ALERT,
+    "restricted": ZoneType.RESTRICTED,
+    "proximity": ZoneType.RESTRICTED,
+    "dynamic": ZoneType.EMERGENCY,
+    "custom_1": ZoneType.CUSTOM_1,
+    "custom_2": ZoneType.CUSTOM_2,
+}
+
+MODEL_TO_CANONICAL_ZONE_TYPE = {
+    ZoneType.GEOFENCE: "geofence",
+    ZoneType.WARN: "warn",
+    ZoneType.ALERT: "alert",
+    ZoneType.RESTRICTED: "restricted",
+    ZoneType.EMERGENCY: "dynamic",
+    ZoneType.CUSTOM_1: "custom_1",
+    ZoneType.CUSTOM_2: "custom_2",
+}
+
+
+class ZoneContractCreate(BaseModel):
+    """Create payload for aligned zone contract."""
+
+    model_config = ConfigDict(
+        extra="ignore",
+        json_schema_extra={
+            "examples": [
+                {
+                    "name": "create geofence",
+                    "type": "geofence",
+                    "geometry": {
+                        "geo_fence_polygon": {
+                            "type": "Polygon",
+                            "coordinates": [[[106.8, -6.2], [106.9, -6.2], [106.9, -6.3], [106.8, -6.2]]],
+                        }
+                    },
+                    "config": {"h3_cells": ["8928308280fffff"]},
+                },
+                {
+                    "name": "create proximity with multi centers",
+                    "type": "proximity",
+                    "geometry": {
+                        "center": {"latitude": -6.2001, "longitude": 106.8167},
+                        "centers": [
+                            {"latitude": -6.2001, "longitude": 106.8167},
+                            {"latitude": -6.2020, "longitude": 106.8180},
+                        ],
+                    },
+                    "config": {"radius_meters": 120},
+                },
+                {
+                    "name": "create custom_1",
+                    "type": "custom_1",
+                    "geometry": {},
+                    "config": {"communal_id": "COMM-77"},
+                },
+            ]
+        },
+    )
+
+    name: str = Field(..., min_length=1, max_length=255)
+    type: Optional[str] = None
+    zone_type: Optional[str] = None
+    geometry: Optional[dict[str, Any]] = None
+    config: Optional[dict[str, Any]] = None
+    h3_cells: Optional[list[str]] = None
+    geo_fence_polygon: Optional[dict[str, Any]] = None
+    zone_id: Optional[str] = None
+
+
+class ZoneContractUpdate(BaseModel):
+    """Update payload for aligned zone contract."""
+
+    model_config = ConfigDict(
+        extra="ignore",
+        json_schema_extra={
+            "examples": [
+                {
+                    "type": "dynamic",
+                    "geometry": {
+                        "center": {"latitude": -6.2001, "longitude": 106.8167},
+                        "centers": [
+                            {"latitude": -6.2001, "longitude": 106.8167},
+                            {"latitude": -6.2020, "longitude": 106.8180},
+                        ],
+                    },
+                    "config": {"min_radius_meters": 50, "max_radius_meters": 250},
+                }
+            ]
+        },
+    )
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    type: Optional[str] = None
+    zone_type: Optional[str] = None
+    geometry: Optional[dict[str, Any]] = None
+    config: Optional[dict[str, Any]] = None
+    h3_cells: Optional[list[str]] = None
+    geo_fence_polygon: Optional[dict[str, Any]] = None
+
+
+class ZoneContractResponse(BaseModel):
+    """Canonical zone shape returned to frontend."""
+
+    id: int
+    zone_id: str
+    owner_id: int
+    name: str
+    type: str
+    geometry: dict[str, Any]
+    config: dict[str, Any]
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": 42,
+                "zone_id": "ZONE-7A29",
+                "owner_id": 9,
+                "name": "Warehouse Perimeter",
+                "type": "geofence",
+                "geometry": {"geo_fence_polygon": {"type": "Polygon", "coordinates": [[[106.8, -6.2], [106.9, -6.2], [106.9, -6.3], [106.8, -6.2]]]}},
+                "config": {"h3_cells": ["8928308280fffff"]},
+                "created_at": "2026-04-23T09:00:00",
+                "updated_at": "2026-04-23T09:10:00",
+            }
+        }
+    )
+
+
+def _normalize_zone_type(raw_type: Optional[str]) -> Optional[str]:
+    if raw_type is None:
+        return None
+    normalized = str(raw_type).strip().lower()
+    normalized = ZONE_TYPE_ALIASES.get(normalized, normalized)
+    return normalized
+
+
+def _extract_h3_cells(config: dict[str, Any]) -> list[str]:
+    value = config.get("h3_cells")
+    if value is None:
+        value = config.get("h3Cells")
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="config.h3_cells must be an array",
+        )
+    if any(not isinstance(cell, str) or not cell.strip() for cell in value):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="config.h3_cells must contain non-empty H3 strings",
+        )
+    return value
+
+
+def _extract_geo_fence_polygon(geometry: dict[str, Any]) -> Optional[dict[str, Any]]:
+    polygon = geometry.get("geo_fence_polygon")
+    if polygon is not None and not isinstance(polygon, dict):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="geometry.geo_fence_polygon must be an object",
+        )
+    return polygon
+
+
+def _validate_zone_payload(zone_type: str, geometry: dict[str, Any], config: dict[str, Any]) -> None:
+    h3_cells = _extract_h3_cells(config)
+    if h3_cells:
+        if any(not validate_h3_cell(cell) for cell in h3_cells):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid H3 cell id")
+        if has_h3_overlap(h3_cells):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Overlapping H3 cells are not allowed across resolutions",
+            )
+
+    if zone_type in {"geofence", "warn", "alert", "restricted"}:
+        polygon = _extract_geo_fence_polygon(geometry)
+        if not polygon and not h3_cells:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": f"{zone_type} requires geometry.geo_fence_polygon or config.h3_cells",
+                    "error_code": "ZONE_VALIDATION_FAILED",
+                    "details": {"type": zone_type, "required_any_of": ["geometry.geo_fence_polygon", "config.h3_cells"]},
+                },
+            )
+        return
+
+    if zone_type == "proximity":
+        center = geometry.get("center")
+        if not isinstance(center, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="proximity requires geometry.center with latitude and longitude",
+            )
+        latitude = center.get("latitude")
+        longitude = center.get("longitude")
+        if not isinstance(latitude, (float, int)) or not isinstance(longitude, (float, int)):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="proximity requires numeric geometry.center.latitude and geometry.center.longitude",
+            )
+        centers = geometry.get("centers")
+        if centers is not None:
+            if not isinstance(centers, list):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="proximity geometry.centers must be an array when provided",
+                )
+            for idx, item in enumerate(centers):
+                if not isinstance(item, dict) or not isinstance(item.get("latitude"), (float, int)) or not isinstance(item.get("longitude"), (float, int)):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"proximity geometry.centers[{idx}] must include numeric latitude and longitude",
+                    )
+        radius = config.get("radius_meters")
+        if not isinstance(radius, (float, int)) or radius <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="proximity requires config.radius_meters > 0",
+            )
+        return
+
+    if zone_type == "dynamic":
+        center = geometry.get("center")
+        if not isinstance(center, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="dynamic requires geometry.center with latitude and longitude",
+            )
+        if not isinstance(center.get("latitude"), (float, int)) or not isinstance(center.get("longitude"), (float, int)):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="dynamic requires numeric geometry.center.latitude and geometry.center.longitude",
+            )
+        centers = geometry.get("centers")
+        if centers is not None:
+            if not isinstance(centers, list):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="dynamic geometry.centers must be an array when provided",
+                )
+            for idx, item in enumerate(centers):
+                if not isinstance(item, dict) or not isinstance(item.get("latitude"), (float, int)) or not isinstance(item.get("longitude"), (float, int)):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"dynamic geometry.centers[{idx}] must include numeric latitude and longitude",
+                    )
+        min_radius = config.get("min_radius_meters")
+        max_radius = config.get("max_radius_meters")
+        if not isinstance(min_radius, (float, int)) or min_radius <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="dynamic requires config.min_radius_meters > 0",
+            )
+        if not isinstance(max_radius, (float, int)) or max_radius < min_radius:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="dynamic requires config.max_radius_meters >= config.min_radius_meters",
+            )
+        return
+
+    if zone_type == "custom_1":
+        communal_id = config.get("communal_id")
+        if not isinstance(communal_id, str) or not communal_id.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="custom_1 requires non-empty config.communal_id",
+            )
+        return
+
+    if zone_type == "custom_2":
+        local_code = config.get("local_code")
+        if not isinstance(local_code, str) or not local_code.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="custom_2 requires non-empty config.local_code",
+            )
+        return
+
+
+def _normalize_payload(payload: dict[str, Any], partial: bool) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    if not partial or "name" in payload:
+        name = payload.get("name")
+        if not partial and not name:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="name is required")
+        if name is not None:
+            normalized["name"] = name
+
+    incoming_type = payload.get("type") if payload.get("type") is not None else payload.get("zone_type")
+    normalized_type = _normalize_zone_type(incoming_type)
+    if normalized_type is not None:
+        if normalized_type not in CANONICAL_ZONE_TYPES:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unsupported zone type")
+        normalized["type"] = normalized_type
+    elif not partial:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="type or zone_type is required")
+
+    geometry_supplied = "geometry" in payload or "geo_fence_polygon" in payload
+    if geometry_supplied:
+        geometry = payload.get("geometry")
+        if geometry is None:
+            geometry = {}
+        if not isinstance(geometry, dict):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="geometry must be an object")
+        if "geo_fence_polygon" in payload and "geo_fence_polygon" not in geometry:
+            legacy_polygon = payload.get("geo_fence_polygon")
+            if legacy_polygon is not None:
+                if not isinstance(legacy_polygon, dict):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="geo_fence_polygon must be an object",
+                    )
+                geometry["geo_fence_polygon"] = legacy_polygon
+        normalized["geometry"] = geometry
+    elif not partial:
+        normalized["geometry"] = {}
+
+    config_supplied = "config" in payload or "h3_cells" in payload
+    if config_supplied:
+        config = payload.get("config")
+        if config is None:
+            config = {}
+        if not isinstance(config, dict):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="config must be an object")
+        if "h3Cells" in config and "h3_cells" not in config:
+            config["h3_cells"] = config.get("h3Cells")
+        if "h3_cells" in payload and "h3_cells" not in config:
+            config["h3_cells"] = payload.get("h3_cells")
+        normalized["config"] = config
+    elif not partial:
+        normalized["config"] = {}
+
+    return normalized
+
+
+def _serialize_zone(zone: Zone) -> dict[str, Any]:
+    params = zone.parameters if isinstance(zone.parameters, dict) else {}
+    geometry = params.get("geometry") if isinstance(params.get("geometry"), dict) else {}
+    config = params.get("config") if isinstance(params.get("config"), dict) else {}
+    config = dict(config)
+
+    if "h3Cells" in config and "h3_cells" not in config:
+        config["h3_cells"] = config["h3Cells"]
+    if zone.h3_cells and "h3_cells" not in config:
+        config["h3_cells"] = list(zone.h3_cells)
+
+    polygon = zone.geo_fence_polygon if isinstance(zone.geo_fence_polygon, dict) else None
+    if polygon and "geo_fence_polygon" not in geometry:
+        geometry = dict(geometry)
+        geometry["geo_fence_polygon"] = polygon
+
+    zone_type = params.get("contractType")
+    normalized_type = _normalize_zone_type(zone_type) if zone_type else None
+    if not normalized_type:
+        normalized_type = MODEL_TO_CANONICAL_ZONE_TYPE.get(zone.zone_type, "geofence")
+
+    return {
+        "id": zone.id,
+        "zone_id": zone.zone_id,
+        "owner_id": zone.owner_id,
+        "name": zone.name,
+        "type": normalized_type,
+        "geometry": geometry if isinstance(geometry, dict) else {},
+        "config": config if isinstance(config, dict) else {},
+        "created_at": zone.created_at.isoformat() if zone.created_at else None,
+        "updated_at": zone.updated_at.isoformat() if zone.updated_at else None,
+    }
+
 
 def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
     """Check if owner has reached zone limit."""
@@ -34,17 +426,39 @@ def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
 
 @router.post(
     "/",
-    response_model=ZoneResponse,
+    response_model=ZoneContractResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create zone",
-    description=(
-        "Create a new zone record. Response always includes id, zone_id, owner_id, and creator_id. "
-        "Role constraints apply: administrator can configure only Main Zone (Zone #1), while users "
-        "can configure Zone #2 and Zone #3. Rejects invalid/overlapping H3 cells across mixed resolutions."
-    ),
+    description="Create a canonical zone and accept legacy compatibility fields during transition.",
+    responses={
+        403: {
+            "description": "Forbidden create",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "error",
+                        "message": "User can only configure Zone #2 and Zone #3",
+                        "error_code": "HTTP_403",
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation failed",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "error",
+                        "message": "proximity requires config.radius_meters > 0",
+                        "error_code": "HTTP_422",
+                    }
+                }
+            },
+        },
+    },
 )
 async def create_zone(
-    zone: ZoneCreate,
+    zone: ZoneContractCreate,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -56,7 +470,8 @@ async def create_zone(
             detail="Owner not found",
         )
 
-    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and zone.zone_type not in PRIVATE_ZONE_TYPES:
+    normalized = _normalize_payload(zone.model_dump(exclude_none=True), partial=False)
+    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and normalized["type"] not in PRIVATE_ZONE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
@@ -75,46 +490,43 @@ async def create_zone(
             detail="User can only configure Zone #2 and Zone #3",
         )
     
-    try:
-        db_zone = zone_crud.create_zone(
-            db,
-            owner_id=current_user["user_id"],
-            creator_id=current_user["user_id"],
-            zone=zone,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
-    except IntegrityError as exc:
-        db.rollback()
-        if "zone_id" in str(exc).lower() and "unique" in str(exc).lower():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Zone ID already exists",
-            )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid zone payload",
-        )
+    geometry = normalized.get("geometry", {})
+    config = normalized.get("config", {})
+    zone_type = normalized["type"]
+    _validate_zone_payload(zone_type, geometry, config)
 
+    model_zone_type = CANONICAL_TO_MODEL_ZONE_TYPE[zone_type]
+    h3_cells = _extract_h3_cells(config)
+    geo_fence_polygon = _extract_geo_fence_polygon(geometry)
+
+    db_zone = Zone(
+        zone_id=zone.zone_id or owner.zone_id,
+        owner_id=owner.id,
+        creator_id=owner.id,
+        zone_type=model_zone_type,
+        name=normalized["name"],
+        parameters={
+            "contractType": zone_type,
+            "geometry": geometry,
+            "config": config,
+        },
+        h3_cells=h3_cells,
+        geo_fence_polygon=geo_fence_polygon,
+    )
+    db.add(db_zone)
+    db.flush()
     db.commit()
-    created_zone = zone_crud.get_zone_with_geojson(db, db_zone.zone_id, owner_id=current_user["user_id"])
+    created_zone = zone_crud.get_zone_by_record_id_with_geojson(db, db_zone.id)
     if not created_zone:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve created zone",
-        )
-    return ZoneResponse.model_validate(zone_crud.zone_to_dict(created_zone))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve created zone")
+    return ZoneContractResponse.model_validate(_serialize_zone(created_zone))
 
 
 @router.get(
     "/",
-    response_model=list[ZoneResponse],
+    response_model=list[ZoneContractResponse],
     summary="List zones",
-    description=(
-        "List caller-visible zones or filter by shared zone_id within caller visibility scope. "
-        "Administrators see all zones under linked users; users see their own zones plus "
-        "the administrator Main Zone."
-    ),
+    description="List caller-visible zones in canonical shape.",
 )
 async def list_zones(
     skip: int = Query(0, ge=0),
@@ -141,7 +553,7 @@ async def list_zones(
             limit=limit,
         )
         zones = [zone for zone in zones if zone.owner_id in allowed_ids]
-        return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
+        return [ZoneContractResponse.model_validate(_serialize_zone(zone)) for zone in zones]
 
     if owner_id is not None and owner_id not in allowed_ids:
         raise HTTPException(
@@ -156,21 +568,21 @@ async def list_zones(
         skip=skip,
         limit=limit,
     )
-    return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
+    return [ZoneContractResponse.model_validate(_serialize_zone(zone)) for zone in zones]
 
 
 @router.get(
     "/{zone_id}",
-    response_model=list[ZoneResponse],
-    summary="Get zones by shared zone ID",
-    description="Return all caller-visible zone records that share the provided zone_id.",
+    response_model=ZoneContractResponse,
+    summary="Get zone by record ID",
+    description="Return a single canonical zone by DB record id.",
 )
 async def get_zone(
-    zone_id: str,
+    zone_id: int,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get all zones by shared zone_id for authenticated users."""
+    """Get a single zone by DB record id for authenticated users."""
     caller = owner_crud.get_owner(db, current_user["user_id"])
     if not caller:
         raise HTTPException(
@@ -178,32 +590,59 @@ async def get_zone(
             detail="Owner not found",
         )
     allowed_ids = set(visible_zone_owner_ids(db, caller))
-    zones = zone_crud.list_zones_by_zone_id_with_geojson(db, zone_id)
-    zones = [zone for zone in zones if zone.owner_id in allowed_ids]
-    if not zones:
+    zone = zone_crud.get_zone_by_record_id_with_geojson(db, zone_id)
+    if not zone:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Zone not found",
+            detail={"message": "Zone not found", "error_code": "ZONE_NOT_FOUND"},
         )
-    return [ZoneResponse.model_validate(zone_crud.zone_to_dict(zone)) for zone in zones]
+    if zone.owner_id not in allowed_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Forbidden: cannot access this zone", "error_code": "ZONE_FORBIDDEN"},
+        )
+    return ZoneContractResponse.model_validate(_serialize_zone(zone))
 
 
 @router.patch(
-    "/{zone_ref}",
-    response_model=ZoneResponse,
+    "/{zone_id}",
+    response_model=ZoneContractResponse,
     summary="Update zone",
-    description=(
-        "Update zone metadata/configuration by zone record id (recommended) or legacy zone_id "
-        "string. Returns 403 with clear detail when the caller is not authorized to edit this zone."
-    ),
+    description="Patch canonical zone by DB record id.",
+    responses={
+        403: {
+            "description": "Forbidden update",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "error",
+                        "message": "Forbidden: users can edit only zones they created",
+                        "error_code": "HTTP_403",
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation failed",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "error",
+                        "message": "dynamic requires config.max_radius_meters >= config.min_radius_meters",
+                        "error_code": "HTTP_422",
+                    }
+                }
+            },
+        },
+    },
 )
 async def update_zone(
-    zone_ref: str,
-    zone_update: ZoneUpdate,
+    zone_id: int,
+    zone_update: ZoneContractUpdate,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update a zone by record id (preferred) or zone_id (legacy)."""
+    """Update a zone by record id."""
     owner = owner_crud.get_owner(db, current_user["user_id"])
     if not owner:
         raise HTTPException(
@@ -211,53 +650,12 @@ async def update_zone(
             detail="Owner not found",
         )
 
-    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and zone_update.zone_type is not None and zone_update.zone_type not in PRIVATE_ZONE_TYPES:
+    target_zone = zone_crud.get_zone_by_record_id_with_geojson(db, zone_id)
+    if not target_zone:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Zone not found",
         )
-
-    target_zone = None
-    if zone_ref.isdigit():
-        target_zone = zone_crud.get_zone_by_record_id_with_geojson(db, int(zone_ref))
-        if not target_zone:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Zone not found",
-            )
-    else:
-        candidates = zone_crud.list_zones_by_zone_id_with_geojson(
-            db,
-            zone_id=zone_ref,
-            skip=0,
-            limit=1000,
-            active_only=False,
-        )
-        if not candidates:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Zone not found",
-            )
-        if owner.role.value == "administrator":
-            allowed = [zone for zone in candidates if zone.owner_id == owner.id and zone.creator_id == owner.id]
-        else:
-            allowed = [zone for zone in candidates if zone.creator_id == owner.id]
-        if not allowed:
-            if owner.role.value == "administrator":
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Forbidden: administrators can edit only their own main zone",
-                )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: users can edit only zones they created",
-            )
-        if len(allowed) > 1:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Multiple zones matched zone_id; please update by numeric zone record id",
-            )
-        target_zone = allowed[0]
 
     if owner.role.value == "administrator":
         if target_zone.owner_id != owner.id or target_zone.creator_id != owner.id:
@@ -272,28 +670,41 @@ async def update_zone(
                 detail="Forbidden: users can edit only zones they created",
             )
 
-    try:
-        zone = zone_crud.update_zone_by_record_id(
-            db,
-            target_zone.id,
-            zone_update,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
-    if not zone:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Zone not found",
-        )
+    normalized = _normalize_payload(zone_update.model_dump(exclude_none=True), partial=True)
+    current = _serialize_zone(target_zone)
+    merged = {
+        "name": normalized.get("name", target_zone.name),
+        "type": normalized.get("type", current["type"]),
+        "geometry": normalized.get("geometry", current["geometry"]),
+        "config": normalized.get("config", current["config"]),
+    }
 
+    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and merged["type"] not in PRIVATE_ZONE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
+        )
+    _validate_zone_payload(merged["type"], merged["geometry"], merged["config"])
+
+    target_zone.name = merged["name"]
+    target_zone.zone_type = CANONICAL_TO_MODEL_ZONE_TYPE[merged["type"]]
+    target_zone.h3_cells = _extract_h3_cells(merged["config"])
+    target_zone.geo_fence_polygon = _extract_geo_fence_polygon(merged["geometry"])
+    target_zone.parameters = {
+        "contractType": merged["type"],
+        "geometry": merged["geometry"],
+        "config": merged["config"],
+    }
+
+    db.flush()
     db.commit()
-    updated_zone = zone_crud.get_zone_by_record_id_with_geojson(db, target_zone.id)
+    updated_zone = zone_crud.get_zone_by_record_id_with_geojson(db, zone_id)
     if not updated_zone:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve updated zone",
         )
-    return ZoneResponse.model_validate(zone_crud.zone_to_dict(updated_zone))
+    return ZoneContractResponse.model_validate(_serialize_zone(updated_zone))
 
 
 @router.delete(
