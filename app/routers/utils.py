@@ -1,5 +1,6 @@
 """Router for utility endpoints."""
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.schemas import (
@@ -20,8 +21,13 @@ from fastapi import HTTPException, status
 router = APIRouter(prefix="/utils", tags=["utilities"])
 
 
+class RegistrationCodeResponse(BaseModel):
+    registration_code: str = Field(description="Single-use code for administrator registration")
+
+
 @router.get(
     "/registration-code",
+    response_model=RegistrationCodeResponse,
     summary="Issue registration code",
     description=(
         "Public endpoint (no Authorization). Returns a single-use registration code string "
@@ -40,6 +46,7 @@ router = APIRouter(prefix="/utils", tags=["utilities"])
             },
         }
     },
+    response_description="Generated single-use registration code object.",
 )
 async def issue_utils_registration_code(db: Session = Depends(get_db)):
     """Mint a DB-backed registration code (same semantics as GET /owners/registration-code)."""
@@ -53,6 +60,7 @@ async def issue_utils_registration_code(db: Session = Depends(get_db)):
     response_model=H3ConversionResponse,
     summary="Convert coordinate to H3",
     description="Convert latitude/longitude to H3 cell for zone setup flows.",
+    response_description="Converted coordinate plus computed H3 cell and effective resolution.",
 )
 async def convert_to_h3(
     request: H3ConversionRequest,
@@ -83,6 +91,15 @@ async def convert_to_h3(
         "Generate invite token used by QR-code join flow. Only private-account "
         "administrators can issue invitation tokens."
     ),
+    responses={
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Only private-account administrators can generate QR registration tokens.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Authenticated owner was not found.",
+        },
+    },
+    response_description="Created QR registration token metadata.",
 )
 async def generate_qr_registration(
     qr_request: QRRegistrationCreate,
@@ -124,6 +141,21 @@ async def generate_qr_registration(
     response_model=OwnerResponse,
     summary="Join account with QR token",
     description="Complete registration by consuming invite token from QR flow.",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "QR token already used or expired.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "description": "QR token is invalid for account join policy.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "QR token not found.",
+        },
+        status.HTTP_409_CONFLICT: {
+            "description": "Email already registered.",
+        },
+    },
+    response_description="Newly created owner account from QR flow.",
 )
 async def join_with_qr(
     qr_data: QRRegistrationUse,

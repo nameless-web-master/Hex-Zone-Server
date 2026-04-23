@@ -16,6 +16,18 @@ router = APIRouter(prefix="/messages", tags=["messages"])
     status_code=status.HTTP_201_CREATED,
     summary="Create zone message",
     description="Create public/private chat messages scoped to the sender's zone.",
+    responses={
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Receiver is outside sender zone.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Sender or receiver owner was not found.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Message visibility/receiver rules were violated.",
+        },
+    },
+    response_description="Created zone message payload.",
 )
 async def create_message(
     payload: ZoneMessageCreate,
@@ -135,6 +147,15 @@ async def _list_zone_messages_for_owner(
         "matches contract-style clients; GET /messages/ is equivalent and retained for "
         "backward compatibility."
     ),
+    responses={
+        status.HTTP_403_FORBIDDEN: {
+            "description": "owner_id does not match authenticated user or other_owner_id is unauthorized.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Requested owner or other_owner_id was not found.",
+        },
+    },
+    response_description="Caller-visible message list in zone scope.",
 )
 async def list_messages(
     owner_id: int = Query(..., ge=1),

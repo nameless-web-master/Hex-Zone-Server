@@ -39,10 +39,14 @@ def _caller_visibility(db: Session, user_id: int) -> list[int]:
         "private_plus=10, enhanced_plus=unlimited."
     ),
     responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Authenticated owner was not found.",
+        },
         status.HTTP_409_CONFLICT: {
             "description": "A device with the same hardware id already exists.",
         },
     },
+    response_description="Created device record for the authenticated owner.",
 )
 async def create_device(
     device: DeviceCreate,
@@ -88,6 +92,12 @@ async def create_device(
         "List devices visible to caller by account policy. Administrators can view "
         "all devices under their account; users can view only their own devices."
     ),
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Authenticated owner was not found.",
+        },
+    },
+    response_description="Caller-visible device list.",
 )
 async def list_devices(
     skip: int = Query(0, ge=0),
@@ -119,6 +129,12 @@ async def list_devices(
     response_model=DeviceResponse,
     summary="Record device heartbeat",
     description="Update the device online/last_seen presence marker for a caller-visible device.",
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Owner or device was not found.",
+        },
+    },
+    response_description="Device with refreshed presence metadata.",
 )
 async def device_heartbeat(
     device_id: int,
@@ -144,6 +160,12 @@ async def device_heartbeat(
     response_model=DeviceResponse,
     summary="Get device",
     description="Get a caller-visible device by id.",
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Owner or device was not found.",
+        },
+    },
+    response_description="Requested device details.",
 )
 async def get_device(
     device_id: int,
@@ -166,6 +188,12 @@ async def get_device(
     response_model=DeviceResponse,
     summary="Get device by hardware ID",
     description="Fetch a caller-visible device using hardware identifier (hid).",
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Owner or device was not found.",
+        },
+    },
+    response_description="Requested device details for the given hardware ID.",
 )
 async def get_device_by_hid(
     hid: str,
@@ -191,6 +219,12 @@ async def get_device_by_hid(
         "Update a caller-visible device including address and operational settings. "
         "Administrators can manage linked user devices (including active/inactive state)."
     ),
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Owner or device was not found.",
+        },
+    },
+    response_description="Updated device record.",
 )
 async def update_device(
     device_id: int,
@@ -222,6 +256,12 @@ async def update_device(
     response_model=DeviceResponse,
     summary="Update device location",
     description="Update latitude/longitude/address and recompute H3 cell for a device.",
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Owner or device was not found.",
+        },
+    },
+    response_description="Device record after location update.",
 )
 async def update_device_location(
     device_id: int,
@@ -262,6 +302,12 @@ async def update_device_location(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete device",
     description="Delete a caller-visible device.",
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Owner or device was not found.",
+        },
+    },
+    response_description="Device deleted successfully.",
 )
 async def delete_device(
     device_id: int,

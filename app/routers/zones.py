@@ -431,6 +431,9 @@ def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
     summary="Create zone",
     description="Create a canonical zone and accept legacy compatibility fields during transition.",
     responses={
+        404: {
+            "description": "Authenticated owner not found.",
+        },
         403: {
             "description": "Forbidden create",
             "content": {
@@ -456,6 +459,7 @@ def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
             },
         },
     },
+    response_description="Created zone in canonical response shape.",
 )
 async def create_zone(
     zone: ZoneContractCreate,
@@ -527,6 +531,15 @@ async def create_zone(
     response_model=list[ZoneContractResponse],
     summary="List zones",
     description="List caller-visible zones in canonical shape.",
+    responses={
+        403: {
+            "description": "Forbidden access for requested owner_id.",
+        },
+        404: {
+            "description": "Authenticated owner not found.",
+        },
+    },
+    response_description="List of canonical zone objects visible to caller.",
 )
 async def list_zones(
     skip: int = Query(0, ge=0),
@@ -576,6 +589,15 @@ async def list_zones(
     response_model=ZoneContractResponse,
     summary="Get zone by record ID",
     description="Return a single canonical zone by DB record id.",
+    responses={
+        403: {
+            "description": "Forbidden access to requested zone.",
+        },
+        404: {
+            "description": "Owner or zone not found.",
+        },
+    },
+    response_description="Canonical zone object for the requested DB record.",
 )
 async def get_zone(
     zone_id: int,
@@ -610,6 +632,9 @@ async def get_zone(
     summary="Update zone",
     description="Patch canonical zone by DB record id.",
     responses={
+        404: {
+            "description": "Owner or zone not found.",
+        },
         403: {
             "description": "Forbidden update",
             "content": {
@@ -635,6 +660,7 @@ async def get_zone(
             },
         },
     },
+    response_description="Updated canonical zone object.",
 )
 async def update_zone(
     zone_id: int,
@@ -711,7 +737,16 @@ async def update_zone(
     "/{zone_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete zone",
-    description="Delete a zone owned by the authenticated caller.",
+    description=(
+        "Delete a zone owned by the authenticated caller. "
+        "This route accepts shared zone identifiers (zone_id string), not DB record IDs."
+    ),
+    responses={
+        404: {
+            "description": "Zone not found for the authenticated owner.",
+        },
+    },
+    response_description="Zone deleted successfully.",
 )
 async def delete_zone(
     zone_id: str,

@@ -274,6 +274,12 @@ class ContractSuccessRegisterResponse(BaseModel):
     error: None = None
 
 
+class ContractSuccessAnyResponse(BaseModel):
+    status: Literal["success"]
+    data: Any
+    error: None = None
+
+
 @router.post(
     "/login",
     response_model=ContractSuccessLoginResponse,
@@ -283,6 +289,7 @@ class ContractSuccessRegisterResponse(BaseModel):
         "routing, including account type, registration role, account owner linkage, "
         "and optional map center coordinates."
     ),
+    response_description="Login success envelope containing token and user bootstrap context.",
 )
 async def login(payload: LoginRequest, db: Session = Depends(get_db)):
     data = controllers.login(db, payload.model_dump())
@@ -304,6 +311,7 @@ async def login(payload: LoginRequest, db: Session = Depends(get_db)):
         "from GET /utils/registration-code (or GET /owners/registration-code) or the "
         "stateless tier code FREE. User registrations do not require a registration code."
     ),
+    response_description="Registration success envelope containing newly created owner profile.",
 )
 async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     data = controllers.register(db, payload.model_dump())
@@ -313,11 +321,21 @@ async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.get(
     "/zones",
+    response_model=ContractSuccessAnyResponse,
     summary="List contract zones",
     description=(
         "Return zones accessible to the authenticated contract user. Administrators can "
         "see all linked users' zones; users can see their own zones and administrator main zone."
     ),
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "description": "Authentication token missing or invalid.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Caller is not allowed to access requested zone data.",
+        },
+    },
+    response_description="Success envelope containing caller-visible zone list.",
 )
 async def get_zones(owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
     return success_response(controllers.list_zones(db, owner))
@@ -328,6 +346,7 @@ async def get_zones(owner: Owner = Depends(require_auth), db: Session = Depends(
     response_model=ContractSuccessOwnerMeResponse,
     summary="Get contract profile",
     description="Return the authenticated owner profile used by mobile client bootstrap.",
+    response_description="Success envelope containing authenticated contract profile.",
 )
 async def get_me(owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
     location = db.get(MemberLocation, owner.id)
@@ -372,8 +391,21 @@ async def get_me(owner: Owner = Depends(require_auth), db: Session = Depends(get
 @router.post(
     "/zones",
     status_code=status.HTTP_201_CREATED,
+    response_model=ContractSuccessAnyResponse,
     summary="Create contract zone",
     description="Create main/secondary zones during setup wizard flows.",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "description": "Authentication token missing or invalid.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Caller is not allowed to create this zone.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Zone payload validation failed.",
+        },
+    },
+    response_description="Success envelope containing created zone payload.",
 )
 async def post_zones(
     payload: ZoneUpsertRequest,
@@ -387,8 +419,24 @@ async def post_zones(
 
 @router.put(
     "/zones/{zone_id}",
+    response_model=ContractSuccessAnyResponse,
     summary="Update contract zone",
     description="Replace/update an existing zone definition for setup wizard flows.",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "description": "Authentication token missing or invalid.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Caller is not allowed to update this zone.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Requested zone does not exist.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Zone payload validation failed.",
+        },
+    },
+    response_description="Success envelope containing updated zone payload.",
 )
 async def put_zone(
     zone_id: str,
@@ -403,8 +451,21 @@ async def put_zone(
 
 @router.delete(
     "/zones/{zone_id}",
+    response_model=ContractSuccessAnyResponse,
     summary="Delete contract zone",
     description="Delete an existing contract-managed zone by shared zone id.",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "description": "Authentication token missing or invalid.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Caller is not allowed to delete this zone.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Requested zone does not exist.",
+        },
+    },
+    response_description="Success envelope confirming zone deletion.",
 )
 async def remove_zone(zone_id: str, owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
     controllers.delete_zone(db, owner, zone_id)
@@ -415,8 +476,24 @@ async def remove_zone(zone_id: str, owner: Owner = Depends(require_auth), db: Se
 @router.post(
     "/messages",
     status_code=status.HTTP_201_CREATED,
+    response_model=ContractSuccessAnyResponse | ZoneMessageResponse,
     summary="Create contract message",
     description="Create and broadcast message events to zone subscribers.",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "description": "Authentication token missing or invalid.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Receiver is outside sender zone or caller is forbidden.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Sender or receiver owner was not found.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Message payload validation failed.",
+        },
+    },
+    response_description="Created message in contract envelope or chat shape (compatibility path).",
 )
 async def post_messages(
     payload: MessageCreateRequest | ChatMessageCreateRequest = Body(...),
@@ -488,8 +565,18 @@ async def post_messages(
 
 @router.get(
     "/messages/new",
+    response_model=ContractSuccessAnyResponse,
     summary="Get new contract messages",
     description="Return messages created after the supplied ISO datetime cursor.",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "description": "Authentication token missing or invalid.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Invalid 'since' cursor format.",
+        },
+    },
+    response_description="Success envelope containing messages newer than the cursor.",
 )
 async def get_new_messages(since: str = Query(...), db: Session = Depends(get_db), owner: Owner = Depends(require_auth)):
     _ = owner
@@ -540,8 +627,18 @@ async def post_member_location(
 
 @router.post(
     "/devices/push-token",
+    response_model=ContractSuccessAnyResponse,
     summary="Register push token",
     description="Register or update a mobile push token for the authenticated owner.",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "description": "Authentication token missing or invalid.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Invalid push token payload.",
+        },
+    },
+    response_description="Success envelope containing registered token result.",
 )
 async def post_push_token(
     payload: PushTokenRequest,

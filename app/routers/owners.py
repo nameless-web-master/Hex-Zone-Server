@@ -43,6 +43,14 @@ def _normalize_owner_name(owner):
         "(preferred) or GET /owners/registration-code, or use tier code FREE (stateless)."
     ),
     response_description="Registered account profile with API key",
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "description": "Email already registered.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Registration validation failed (including invalid registration code rules).",
+        },
+    },
 )
 async def register_owner(
     owner: OwnerCreate,
@@ -81,6 +89,14 @@ async def register_owner(
     summary="Login",
     description="Authenticate with email and password and return bearer token.",
     response_description="JWT access token and owner id",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "description": "Invalid email or password.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Account is inactive or expired.",
+        },
+    },
 )
 async def login(
     credentials: LoginRequest,
@@ -127,6 +143,8 @@ async def login(
         "Same as GET /utils/registration-code: public, unauthenticated, returns a single-use "
         "registration code for administrator signup. Prefer /utils/registration-code when available."
     ),
+    deprecated=True,
+    response_description="Single-use registration code payload.",
 )
 async def issue_owners_registration_code(db: Session = Depends(get_db)):
     code = mint_registration_code(db)
@@ -139,6 +157,11 @@ async def issue_owners_registration_code(db: Session = Depends(get_db)):
     response_model=OwnerDetailResponse,
     summary="Get current owner profile",
     response_description="Authenticated owner with caller-visible zones and devices",
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Authenticated owner was not found.",
+        },
+    },
 )
 async def get_current_owner(
     current_user: dict = Depends(get_current_user),
@@ -159,6 +182,15 @@ async def get_current_owner(
     response_model=OwnerDetailResponse,
     summary="Get owner by id",
     description="Get a profile only if it is visible under caller account visibility rules.",
+    responses={
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Not authorized to view the requested owner.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Caller or requested owner was not found.",
+        },
+    },
+    response_description="Requested owner profile.",
 )
 async def get_owner(
     owner_id: int,
@@ -196,6 +228,12 @@ async def get_owner(
         "List owners visible to caller by account policy. Administrators see all "
         "owners in their account; users see only themselves."
     ),
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Authenticated caller was not found.",
+        },
+    },
+    response_description="Caller-visible owner list.",
 )
 async def list_owners(
     skip: int = 0,
@@ -226,6 +264,15 @@ async def list_owners(
         "active status toggles. Non-administrator callers may update only their own profile "
         "and cannot change active state."
     ),
+    responses={
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Not authorized to update the requested owner.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Caller or requested owner was not found.",
+        },
+    },
+    response_description="Updated owner profile.",
 )
 async def update_owner(
     owner_id: int,
@@ -278,6 +325,15 @@ async def update_owner(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete owner account",
     description="Delete the caller-owned account record.",
+    responses={
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Not authorized to delete this owner.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Owner not found.",
+        },
+    },
+    response_description="Owner deleted successfully.",
 )
 async def delete_owner(
     owner_id: int,
