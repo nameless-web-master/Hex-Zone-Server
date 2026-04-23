@@ -96,7 +96,14 @@ async def list_devices(
     db: Session = Depends(get_db),
 ):
     """List caller-visible devices based on account role."""
-    owner_ids = _caller_visibility(db, current_user["user_id"])
+    # Include inactive linked users when listing devices for account administrators.
+    owner = owner_crud.get_owner(db, current_user["user_id"])
+    if not owner:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner not found",
+        )
+    owner_ids = visible_owner_ids(db, owner, include_inactive=True)
     devices = device_crud.list_devices(
         db,
         owner_ids=owner_ids,
