@@ -1,5 +1,6 @@
 """Main FastAPI application."""
 import logging
+import threading
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -13,18 +14,23 @@ from app.websocket.routes import router as websocket_router
 
 logging.basicConfig(level=logging.INFO)
 
+
+def _init_db_background() -> None:
+    """Run DB bootstrap without blocking app startup."""
+    try:
+        init_db()
+        logging.info("Database initialized")
+    except Exception as exc:
+        logging.exception("Database initialization failed in background: %s", exc)
+
 # Lifespan context
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage startup and shutdown of the app."""
     # Startup
     print("Starting Zone Weaver backend...")
-    try:
-        init_db()
-        print("Database initialized")
-    except Exception as exc:
-        logging.exception("Database initialization failed during startup: %s", exc)
-        print("Continuing startup without DB initialization")
+    threading.Thread(target=_init_db_background, daemon=True).start()
+    print("Database initialization started in background")
     yield
     # Shutdown
     print("Shutting down Zone Weaver backend...")
