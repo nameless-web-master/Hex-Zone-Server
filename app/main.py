@@ -19,8 +19,12 @@ async def lifespan(app: FastAPI):
     """Manage startup and shutdown of the app."""
     # Startup
     print("Starting Zone Weaver backend...")
-    init_db()
-    print("Database initialized")
+    try:
+        init_db()
+        print("Database initialized")
+    except Exception as exc:
+        logging.exception("Database initialization failed during startup: %s", exc)
+        print("Continuing startup without DB initialization")
     yield
     # Shutdown
     print("Shutting down Zone Weaver backend...")

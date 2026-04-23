@@ -4,14 +4,18 @@ from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from app.core.config import settings
 
 _db_url = settings.DATABASE_URL
+_engine_kwargs = {
+    "echo": False,
+    "future": True,
+    "pool_pre_ping": True,
+}
+
+if _db_url.startswith("postgresql"):
+    # Avoid long startup hangs when DB is unreachable in managed deploys.
+    _engine_kwargs["connect_args"] = {"connect_timeout": 10}
 
 # Create sync engine
-engine = create_engine(
-    _db_url,
-    echo=False,
-    future=True,
-    pool_pre_ping=True,
-)
+engine = create_engine(_db_url, **_engine_kwargs)
 
 # Create session factory
 session_maker = sessionmaker(
