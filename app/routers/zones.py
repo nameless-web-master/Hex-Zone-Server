@@ -189,21 +189,21 @@ async def get_zone(
 
 
 @router.patch(
-    "/{zone_record_id}",
+    "/{zone_ref}",
     response_model=ZoneResponse,
     summary="Update zone",
     description=(
-        "Update zone metadata/configuration by record id. Returns 403 with clear detail when the "
-        "caller is not authorized to edit this zone."
+        "Update zone metadata/configuration by zone record id (recommended) or legacy zone_id "
+        "string. Returns 403 with clear detail when the caller is not authorized to edit this zone."
     ),
 )
 async def update_zone(
-    zone_record_id: int,
+    zone_ref: str,
     zone_update: ZoneUpdate,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update a zone by record id."""
+    """Update a zone by record id (preferred) or zone_id (legacy)."""
     owner = owner_crud.get_owner(db, current_user["user_id"])
     if not owner:
         raise HTTPException(
@@ -217,12 +217,47 @@ async def update_zone(
             detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
         )
 
-    target_zone = zone_crud.get_zone_by_record_id_with_geojson(db, zone_record_id)
-    if not target_zone:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Zone not found",
+    target_zone = None
+    if zone_ref.isdigit():
+        target_zone = zone_crud.get_zone_by_record_id_with_geojson(db, int(zone_ref))
+        if not target_zone:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Zone not found",
+            )
+    else:
+        candidates = zone_crud.list_zones_by_zone_id_with_geojson(
+            db,
+            zone_id=zone_ref,
+            skip=0,
+            limit=1000,
+            active_only=False,
         )
+        if not candidates:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Zone not found",
+            )
+        if owner.role.value == "administrator":
+            allowed = [zone for zone in candidates if zone.owner_id == owner.id and zone.creator_id == owner.id]
+        else:
+            allowed = [zone for zone in candidates if zone.creator_id == owner.id]
+        if not allowed:
+            if owner.role.value == "administrator":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Forbidden: administrators can edit only their own main zone",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: users can edit only zones they created",
+            )
+        if len(allowed) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Multiple zones matched zone_id; please update by numeric zone record id",
+            )
+        target_zone = allowed[0]
 
     if owner.role.value == "administrator":
         if target_zone.owner_id != owner.id or target_zone.creator_id != owner.id:
@@ -236,12 +271,6 @@ async def update_zone(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: users can edit only zones they created",
             )
-
-    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and zone_update.zone_type is not None and zone_update.zone_type not in PRIVATE_ZONE_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
-        )
 
     try:
         zone = zone_crud.update_zone(
@@ -259,7 +288,7 @@ async def update_zone(
         )
 
     db.commit()
-    updated_zone = zone_crud.get_zone_by_record_id_with_geojson(db, zone_record_id)
+    updated_zone = zone_crud.get_zone_by_record_id_with_geojson(db, target_zone.id)
     if not updated_zone:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
