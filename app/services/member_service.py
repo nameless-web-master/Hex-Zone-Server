@@ -42,7 +42,7 @@ def list_members(db: Session, owner: Owner, active: bool | None = None) -> list[
                 .order_by(Device.updated_at.desc())
                 .first()
             )
-        zones = db.query(Zone.zone_id).filter(Zone.owner_id == member.id, Zone.active.is_(True)).all()
+        zones = db.query(Zone.zone_id).filter(Zone.owner_id == member.id).all()
         output.append(
             {
                 "id": str(member.id),
