@@ -8,7 +8,7 @@ from app.models import Zone
 from app.models.zone import ZoneType
 from app.schemas.schemas import ZoneCreate, ZoneUpdate
 from app.core.h3_utils import has_h3_overlap, lat_lng_to_h3_cell, validate_h3_cell
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Sequence
 
 
 def _polygon_coords_to_wkt(polygon_coords: list[list[list[float]]]) -> str:
@@ -162,13 +162,32 @@ def list_zones_with_geojson(
     active_only: bool = True,
 ) -> List[Zone]:
     """List zones for an owner and include GeoJSON polygon data."""
+    return list_zones_with_geojson_for_owners(
+        db,
+        [owner_id],
+        skip=skip,
+        limit=limit,
+        active_only=active_only,
+    )
+
+
+def list_zones_with_geojson_for_owners(
+    db: Session,
+    owner_ids: Sequence[int],
+    skip: int = 0,
+    limit: int = 100,
+    active_only: bool = True,
+) -> List[Zone]:
+    """List zones for one or more owners and include GeoJSON polygon data."""
+    if not owner_ids:
+        return []
     query = select(
         Zone,
         func.ST_AsGeoJSON(Zone.geo_fence_polygon).label("geo_fence_polygon"),
-    ).where(Zone.owner_id == owner_id)
+    ).where(Zone.owner_id.in_(tuple(owner_ids)))
     if active_only:
         query = query.where(Zone.active == True)
-    query = query.offset(skip).limit(limit)
+    query = query.order_by(Zone.owner_id.asc(), Zone.id.asc()).offset(skip).limit(limit)
     result = db.execute(query).all()
 
     zones: List[Zone] = []

@@ -215,6 +215,20 @@ class DeviceUpdate(BaseModel):
         return self
 
 
+class DeviceOwnerBrief(BaseModel):
+    """Minimal owner info returned with device payloads."""
+    id: int
+    email: EmailStr
+    first_name: str
+    last_name: str
+    role: OwnerRoleEnum
+    account_type: AccountTypeEnum
+    active: bool
+
+    class Config:
+        from_attributes = True
+
+
 class DeviceResponse(BaseModel):
     """Device response schema."""
     id: int
@@ -226,6 +240,7 @@ class DeviceResponse(BaseModel):
     address: Optional[str]
     h3_cell_id: Optional[str]
     owner_id: int
+    owner: Optional[DeviceOwnerBrief] = None
     propagate_enabled: bool
     propagate_radius_km: float
     active: bool

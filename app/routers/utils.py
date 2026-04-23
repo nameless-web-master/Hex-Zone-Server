@@ -79,7 +79,10 @@ async def convert_to_h3(
     "/qr/generate",
     response_model=QRRegistrationResponse,
     summary="Generate QR registration token",
-    description="Generate invite token used by QR-code join flow.",
+    description=(
+        "Generate invite token used by QR-code join flow. Only private-account "
+        "administrators can issue invitation tokens."
+    ),
 )
 async def generate_qr_registration(
     qr_request: QRRegistrationCreate,
@@ -94,11 +97,16 @@ async def generate_qr_registration(
             detail="Owner not found",
         )
     
-    # Only Private accounts can generate QR codes
+    # Only Private administrators can generate QR codes
     if owner.account_type.value != "private":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only Private accounts can generate QR registration codes",
+        )
+    if owner.role.value != "administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can generate QR registration codes",
         )
     
     qr = qr_crud.create_qr_registration(

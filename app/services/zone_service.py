@@ -23,6 +23,7 @@ CONTRACT_TO_MODEL_ZONE_TYPE = {
 }
 
 MODEL_TO_CONTRACT_ZONE_TYPE = {value: key for key, value in CONTRACT_TO_MODEL_ZONE_TYPE.items()}
+PRIVATE_ALLOWED_ZONE_TYPES = {"warn", "alert", "geofence"}
 
 
 def _extract_geojson_polygon(geometry: object) -> dict | None:
@@ -72,6 +73,11 @@ def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
     zone_type = payload["type"]
     if zone_type not in CONTRACT_TO_MODEL_ZONE_TYPE:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unsupported zone type")
+    if owner.account_type.value == "private" and zone_type not in PRIVATE_ALLOWED_ZONE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Private accounts may only create warn, alert, or geofence zones",
+        )
 
     geometry = payload.get("geometry", {})
     geo_fence_polygon = _extract_geojson_polygon(geometry)
@@ -125,6 +131,11 @@ def update_zone(db: Session, owner: Owner, zone_id: str, payload: dict) -> dict:
         zone_type = payload["type"]
         if zone_type not in CONTRACT_TO_MODEL_ZONE_TYPE:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unsupported zone type")
+        if owner.account_type.value == "private" and zone_type not in PRIVATE_ALLOWED_ZONE_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Private accounts may only create warn, alert, or geofence zones",
+            )
         zone.zone_type = CONTRACT_TO_MODEL_ZONE_TYPE[zone_type]
     params = zone.parameters or {}
     if "geometry" in payload:

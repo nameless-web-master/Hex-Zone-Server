@@ -1176,3 +1176,248 @@ async def test_contract_register_admin_with_free_succeeds(test_db, override_get_
         body = r.json()
         assert body.get("status") == "success"
         assert body["data"]["email"] == "contract-free@example.com"
+
+
+@pytest.mark.asyncio
+async def test_exclusive_account_rejects_user_registration(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin = await client.post(
+            "/owners/register",
+            json={
+                "email": "exclusive-admin@example.com",
+                "zone_id": "exclusive-zone",
+                "first_name": "Exclusive",
+                "last_name": "Admin",
+                "account_type": "exclusive",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin.status_code == 201
+        admin_id = admin.json()["id"]
+
+        user = await client.post(
+            "/owners/register",
+            json={
+                "email": "exclusive-user@example.com",
+                "zone_id": "exclusive-zone",
+                "first_name": "Exclusive",
+                "last_name": "User",
+                "account_type": "exclusive",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user.status_code == 422
+        assert "exclusive" in _http_error_message(user.json()).lower()
+
+
+@pytest.mark.asyncio
+async def test_qr_generate_rejected_for_private_user_role(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin = await client.post(
+            "/owners/register",
+            json={
+                "email": "qr-admin@example.com",
+                "zone_id": "qr-zone",
+                "first_name": "QR",
+                "last_name": "Admin",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin.status_code == 201
+        admin_id = admin.json()["id"]
+
+        user = await client.post(
+            "/owners/register",
+            json={
+                "email": "qr-user@example.com",
+                "zone_id": "qr-zone",
+                "first_name": "QR",
+                "last_name": "User",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user.status_code == 201
+
+        user_login = await client.post(
+            "/owners/login",
+            json={"email": "qr-user@example.com", "password": "SecurePassword123"},
+        )
+        assert user_login.status_code == 200
+        token = user_login.json()["access_token"]
+
+        qr_generate = await client.post(
+            "/utils/qr/generate",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"expires_in_hours": 24},
+        )
+        assert qr_generate.status_code == 403
+        assert "administrator" in _http_error_message(qr_generate.json()).lower()
+
+
+@pytest.mark.asyncio
+async def test_private_account_device_limit_is_one_per_owner(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, token = await _register_and_login(
+            client,
+            email="device-cap@example.com",
+            zone_id="device-cap-zone",
+            first_name="Device",
+            last_name="Cap",
+        )
+        headers = {"Authorization": f"Bearer {token}"}
+        first = await client.post(
+            "/devices/",
+            headers=headers,
+            json={"hid": "PRIVATE-DEVICE-1", "name": "Phone 1", "address": "Addr"},
+        )
+        assert first.status_code == 201
+
+        second = await client.post(
+            "/devices/",
+            headers=headers,
+            json={"hid": "PRIVATE-DEVICE-2", "name": "Phone 2", "address": "Addr"},
+        )
+        assert second.status_code == 403
+        assert "at most 1 device" in _http_error_message(second.json()).lower()
+
+
+@pytest.mark.asyncio
+async def test_admin_can_manage_linked_user_device_and_device_shows_owner(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin = await client.post(
+            "/owners/register",
+            json={
+                "email": "manage-admin@example.com",
+                "zone_id": "manage-zone",
+                "first_name": "Manage",
+                "last_name": "Admin",
+                "account_type": "private_plus",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin.status_code == 201
+        admin_id = admin.json()["id"]
+
+        user = await client.post(
+            "/owners/register",
+            json={
+                "email": "manage-user@example.com",
+                "zone_id": "manage-zone",
+                "first_name": "Manage",
+                "last_name": "User",
+                "account_type": "private_plus",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user.status_code == 201
+
+        admin_login = await client.post(
+            "/owners/login",
+            json={"email": "manage-admin@example.com", "password": "SecurePassword123"},
+        )
+        user_login = await client.post(
+            "/owners/login",
+            json={"email": "manage-user@example.com", "password": "SecurePassword123"},
+        )
+        assert admin_login.status_code == 200
+        assert user_login.status_code == 200
+        admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+        user_headers = {"Authorization": f"Bearer {user_login.json()['access_token']}"}
+
+        created = await client.post(
+            "/devices/",
+            headers=user_headers,
+            json={"hid": "MANAGE-USER-DEVICE", "name": "User Phone", "address": "User Address"},
+        )
+        assert created.status_code == 201
+        device_id = created.json()["id"]
+
+        patched = await client.patch(
+            f"/devices/{device_id}",
+            headers=admin_headers,
+            json={"active": False},
+        )
+        assert patched.status_code == 200
+        body = patched.json()
+        assert body["active"] is False
+        assert body["owner"]["email"] == "manage-user@example.com"
+        assert body["owner"]["id"] == user.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_admin_can_deactivate_user_and_block_login(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin = await client.post(
+            "/owners/register",
+            json={
+                "email": "toggle-admin@example.com",
+                "zone_id": "toggle-zone",
+                "first_name": "Toggle",
+                "last_name": "Admin",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin.status_code == 201
+        admin_id = admin.json()["id"]
+
+        user = await client.post(
+            "/owners/register",
+            json={
+                "email": "toggle-user@example.com",
+                "zone_id": "toggle-zone",
+                "first_name": "Toggle",
+                "last_name": "User",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user.status_code == 201
+        user_id = user.json()["id"]
+
+        admin_login = await client.post(
+            "/owners/login",
+            json={"email": "toggle-admin@example.com", "password": "SecurePassword123"},
+        )
+        assert admin_login.status_code == 200
+        admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+        deactivate = await client.patch(
+            f"/owners/{user_id}",
+            headers=admin_headers,
+            json={"active": False},
+        )
+        assert deactivate.status_code == 200
+        assert deactivate.json()["active"] is False
+
+        blocked_login = await client.post(
+            "/owners/login",
+            json={"email": "toggle-user@example.com", "password": "SecurePassword123"},
+        )
+        assert blocked_login.status_code == 403

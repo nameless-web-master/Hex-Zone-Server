@@ -37,19 +37,26 @@ OPENAPI_TAGS = [
         "description": (
             "Registration, login, and owner profile management. Public GET "
             "/owners/registration-code issues administrator signup codes; POST /owners/register "
-            "requires registration_code for administrator role."
+            "requires registration_code for administrator role. Exclusive accounts do not "
+            "allow user-member registrations. Administrators can activate/deactivate linked users."
         ),
     },
     {
         "name": "zones",
         "description": (
             "Main Zone and optional Zone #2/#3 management. Includes Zone Matching, "
-            "H3/grid, geofence, and related zone configuration payloads."
+            "H3/grid, geofence, and related zone configuration payloads. Administrators can "
+            "create only one Main Zone; users can create up to two zones. Zone listing follows "
+            "role-aware visibility (admins see account zones, users see own zones plus admin main zone)."
         ),
     },
     {
         "name": "devices",
-        "description": "Device enrollment, presence heartbeat, and location updates.",
+        "description": (
+            "Device enrollment, presence heartbeat, and location updates. Device capacity is "
+            "enforced by account tier per owner: private/exclusive/enhanced=1, private_plus=10, "
+            "enhanced_plus=unlimited. Administrators can manage linked users' device active state."
+        ),
     },
     {
         "name": "messages",
@@ -59,7 +66,8 @@ OPENAPI_TAGS = [
         "name": "utilities",
         "description": (
             "Helper endpoints for H3 conversion, QR registration flows, and public issuance of "
-            "single-use administrator registration codes (GET /utils/registration-code)."
+            "single-use administrator registration codes (GET /utils/registration-code). "
+            "QR invitation generation is restricted to private-account administrators."
         ),
     },
     {

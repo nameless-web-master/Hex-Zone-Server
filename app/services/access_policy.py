@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Owner
 from app.models.owner import AccountType, OwnerRole
+from app.services.device_entitlements import assert_account_allows_user_members
 
 
 def account_root_id(owner: Owner) -> int:
@@ -24,6 +25,7 @@ def resolve_account_owner_id(
     """Resolve account owner linkage for new owner registrations."""
     if role == "administrator":
         return None
+    assert_account_allows_user_members(account_type)
 
     if requested_account_owner_id is not None:
         account_owner = db.get(Owner, requested_account_owner_id)
@@ -81,26 +83,22 @@ def visible_owner_ids(db: Session, owner: Owner) -> list[int]:
     return owner_ids
 
 
-def visible_zone_owner_ids(db: Session, owner: Owner) -> list[int]:
-    """Return owners whose zones are visible to the caller.
+def zone_listing_owner_ids(db: Session, owner: Owner) -> list[int]:
+    """Return owner ids whose zones the caller may list or read.
 
-    Private accounts are zone-collaborative: both administrator and users can
-    view each other's zones/cells within the same account root.
+    Administrators see every linked user's zones (same account root).
+    Users see only their own zones plus the administrator's main zone (account root).
     """
-    if owner.account_type.value != "private":
-        return visible_owner_ids(db, owner)
+    if owner.role.value == "user":
+        root_id = account_root_id(owner)
+        if root_id == owner.id:
+            return [owner.id]
+        return [owner.id, root_id]
 
-    root_id = account_root_id(owner)
-    rows = (
-        db.query(Owner.id)
-        .filter(
-            Owner.account_owner_id == root_id,
-            Owner.active.is_(True),
-        )
-        .all()
-    )
-    owner_ids = [row[0] for row in rows]
-    if owner.id not in owner_ids:
-        owner_ids.append(owner.id)
-    return owner_ids
+    return visible_owner_ids(db, owner)
+
+
+def visible_zone_owner_ids(db: Session, owner: Owner) -> list[int]:
+    """Deprecated alias: use zone_listing_owner_ids."""
+    return zone_listing_owner_ids(db, owner)
 

@@ -129,6 +129,11 @@ def login_user(db: Session, email: str, password: str) -> dict:
     owner = db.query(Owner).filter(Owner.email == email).first()
     if not owner or not verify_password(password, owner.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    if not owner.active or owner.expired:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive or expired",
+        )
 
     token = create_access_token({"sub": str(owner.id)}, expires_delta=timedelta(minutes=30))
     return {

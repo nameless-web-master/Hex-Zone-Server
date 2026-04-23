@@ -13,6 +13,7 @@ from app.crud import device as device_crud
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user
 from app.services.access_policy import visible_owner_ids
+from app.services.device_entitlements import assert_owner_device_capacity
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -32,7 +33,11 @@ def _caller_visibility(db: Session, user_id: int) -> list[int]:
     response_model=DeviceResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create device",
-    description="Create a device under the authenticated owner account.",
+    description=(
+        "Create a device under the authenticated owner account. Device enrollment "
+        "capacity is enforced by account tier: private/exclusive/enhanced=1, "
+        "private_plus=10, enhanced_plus=unlimited."
+    ),
     responses={
         status.HTTP_409_CONFLICT: {
             "description": "A device with the same hardware id already exists.",
@@ -45,6 +50,15 @@ async def create_device(
     db: Session = Depends(get_db),
 ):
     """Create a new device for the current owner."""
+    owner = owner_crud.get_owner(db, current_user["user_id"])
+    if not owner:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner not found",
+        )
+    current_count = device_crud.count_devices(db, owner.id)
+    assert_owner_device_capacity(owner, current_count)
+
     try:
         db_device = device_crud.create_device(db, current_user["user_id"], device)
         db.commit()
@@ -61,7 +75,9 @@ async def create_device(
                 detail=f"Device hid '{device.hid}' already exists",
             ) from exc
         raise
-    return DeviceResponse.model_validate(db_device)
+    db.refresh(db_device)
+    hydrated = device_crud.get_device(db, db_device.id, owner_ids=[owner.id], load_owner=True)
+    return DeviceResponse.model_validate(hydrated or db_device)
 
 
 @router.get(
@@ -86,6 +102,7 @@ async def list_devices(
         owner_ids=owner_ids,
         skip=skip,
         limit=limit,
+        load_owner=True,
     )
     return [DeviceResponse.model_validate(device) for device in devices]
 
@@ -103,7 +120,7 @@ async def device_heartbeat(
 ):
     """Record device presence (online, last_seen)."""
     owner_ids = _caller_visibility(db, current_user["user_id"])
-    device = device_crud.get_device(db, device_id, owner_ids=owner_ids)
+    device = device_crud.get_device(db, device_id, owner_ids=owner_ids, load_owner=True)
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -150,7 +167,7 @@ async def get_device_by_hid(
 ):
     """Get a device by hardware ID."""
     owner_ids = _caller_visibility(db, current_user["user_id"])
-    device = device_crud.get_device_by_hid(db, hid, owner_ids=owner_ids)
+    device = device_crud.get_device_by_hid(db, hid, owner_ids=owner_ids, load_owner=True)
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -163,7 +180,10 @@ async def get_device_by_hid(
     "/{device_id}",
     response_model=DeviceResponse,
     summary="Update device",
-    description="Update a caller-visible device including address and operational settings.",
+    description=(
+        "Update a caller-visible device including address and operational settings. "
+        "Administrators can manage linked user devices (including active/inactive state)."
+    ),
 )
 async def update_device(
     device_id: int,
@@ -185,7 +205,9 @@ async def update_device(
             detail="Device not found",
         )
     db.commit()
-    return DeviceResponse.model_validate(device)
+    db.refresh(device)
+    hydrated = device_crud.get_device(db, device.id, owner_ids=owner_ids, load_owner=True)
+    return DeviceResponse.model_validate(hydrated or device)
 
 
 @router.post(
@@ -223,7 +245,9 @@ async def update_device_location(
     device_crud.touch_presence(db, updated_device)
 
     db.commit()
-    return DeviceResponse.model_validate(updated_device)
+    db.refresh(updated_device)
+    hydrated = device_crud.get_device(db, updated_device.id, owner_ids=owner_ids, load_owner=True)
+    return DeviceResponse.model_validate(hydrated or updated_device)
 
 
 @router.delete(

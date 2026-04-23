@@ -1,6 +1,6 @@
 """CRUD operations for Device."""
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.future import select
 from sqlalchemy import func
 from app.models import Device
@@ -42,9 +42,12 @@ def get_device(
     device_id: int,
     owner_id: Optional[int] = None,
     owner_ids: Optional[List[int]] = None,
+    load_owner: bool = False,
 ) -> Optional[Device]:
     """Get a device by ID, optionally filtered by owner."""
     query = select(Device).where(Device.id == device_id)
+    if load_owner:
+        query = query.options(joinedload(Device.owner))
     if owner_id is not None:
         query = query.where(Device.owner_id == owner_id)
     if owner_ids is not None:
@@ -58,9 +61,12 @@ def get_device_by_hid(
     hid: str,
     owner_id: Optional[int] = None,
     owner_ids: Optional[List[int]] = None,
+    load_owner: bool = False,
 ) -> Optional[Device]:
     """Get a device by hardware ID."""
     query = select(Device).where(Device.hid == hid)
+    if load_owner:
+        query = query.options(joinedload(Device.owner))
     if owner_id is not None:
         query = query.where(Device.owner_id == owner_id)
     if owner_ids is not None:
@@ -76,9 +82,12 @@ def list_devices(
     skip: int = 0,
     limit: Optional[int] = None,
     active_only: bool = False,
+    load_owner: bool = False,
 ) -> List[Device]:
     """List devices for an owner."""
     query = select(Device)
+    if load_owner:
+        query = query.options(joinedload(Device.owner))
     if owner_id is not None:
         query = query.where(Device.owner_id == owner_id)
     if owner_ids is not None:

@@ -105,7 +105,11 @@ async def create_zone(
     "/",
     response_model=list[ZoneResponse],
     summary="List zones",
-    description="List caller-visible zones or filter by shared zone_id within caller visibility scope.",
+    description=(
+        "List caller-visible zones or filter by shared zone_id within caller visibility scope. "
+        "Administrators see all zones under linked users; users see their own zones plus "
+        "the administrator Main Zone."
+    ),
 )
 async def list_zones(
     skip: int = Query(0, ge=0),
@@ -140,9 +144,10 @@ async def list_zones(
             detail="Forbidden: cannot access another owner's zones",
         )
 
-    zones = zone_crud.list_zones_with_geojson(
+    target_owner_ids = [owner_id] if owner_id is not None else sorted(allowed_ids)
+    zones = zone_crud.list_zones_with_geojson_for_owners(
         db,
-        owner_id=owner_id or current_user["user_id"],
+        owner_ids=target_owner_ids,
         skip=skip,
         limit=limit,
     )

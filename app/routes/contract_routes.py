@@ -297,6 +297,8 @@ async def login(payload: LoginRequest, db: Session = Depends(get_db)):
     description=(
         "Mobile registration endpoint for administrator/user onboarding. Supports all "
         "5 account tiers, role-aware registration, and account owner linking for users. "
+        "Exclusive tier does not allow USER members. USER registrations must match the "
+        "administrator zone/account type. "
         "Administrators must submit registrationCode: either echo the single-use string "
         "from GET /utils/registration-code (or GET /owners/registration-code) or the "
         "stateless tier code FREE. User registrations do not require a registration code."
@@ -311,7 +313,10 @@ async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 @router.get(
     "/zones",
     summary="List contract zones",
-    description="Return zones accessible to the authenticated contract user.",
+    description=(
+        "Return zones accessible to the authenticated contract user. Administrators can "
+        "see all linked users' zones; users can see their own zones and administrator main zone."
+    ),
 )
 async def get_zones(owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
     return success_response(controllers.list_zones(db, owner))

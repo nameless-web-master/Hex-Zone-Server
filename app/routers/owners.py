@@ -37,6 +37,8 @@ def _normalize_owner_name(owner):
     description=(
         "Create an administrator/user account from setup wizard inputs. "
         "Supports all account tiers and links user registrations to an account owner. "
+        "User registration must match administrator zone/account_type, and exclusive "
+        "accounts cannot add user members. "
         "Administrators must include registration_code: echo GET /utils/registration-code "
         "(preferred) or GET /owners/registration-code, or use tier code FREE (stateless)."
     ),
@@ -219,7 +221,11 @@ async def list_owners(
     "/{owner_id}",
     response_model=OwnerResponse,
     summary="Update owner profile",
-    description="Update caller-owned profile fields such as name, zone reference, or active flag.",
+    description=(
+        "Update owner profile fields. Administrators may update linked users, including "
+        "active status toggles. Non-administrator callers may update only their own profile "
+        "and cannot change active state."
+    ),
 )
 async def update_owner(
     owner_id: int,
@@ -228,12 +234,34 @@ async def update_owner(
     db: Session = Depends(get_db),
 ):
     """Update an owner."""
-    if current_user["user_id"] != owner_id:
+    caller = owner_crud.get_owner(db, current_user["user_id"])
+    if not caller:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caller not found",
+        )
+
+    is_admin = caller.role.value == "administrator"
+    if not is_admin and current_user["user_id"] != owner_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this owner",
         )
-    
+
+    if owner_update.active is not None and not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can change active status",
+        )
+
+    if is_admin and current_user["user_id"] != owner_id:
+        allowed_ids = visible_owner_ids(db, caller)
+        if owner_id not in allowed_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to update this owner",
+            )
+
     updated_owner = owner_crud.update_owner(db, owner_id, owner_update)
     if not updated_owner:
         raise HTTPException(
