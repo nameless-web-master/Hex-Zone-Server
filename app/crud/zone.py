@@ -255,6 +255,39 @@ def update_zone(
     return db_zone
 
 
+def update_zone_by_record_id(
+    db: Session,
+    record_id: int,
+    zone_update: ZoneUpdate,
+) -> Optional[Zone]:
+    """Update a zone by primary key id."""
+    query = select(Zone).where(Zone.id == record_id)
+    result = db.execute(query)
+    db_zone = result.scalars().first()
+    if not db_zone:
+        return None
+
+    update_data = zone_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field == "zone_type" and value:
+            value = ZoneType(value)
+        if field == "h3_cells" and value:
+            if any(not validate_h3_cell(cell) for cell in value):
+                raise ValueError("Invalid H3 cell id")
+            if has_h3_overlap(value):
+                raise ValueError("Overlapping H3 cells are not allowed across resolutions")
+        if field == "geo_fence_polygon":
+            if value is None:
+                setattr(db_zone, field, None)
+                continue
+            value = _geojson_to_geometry(value)
+        setattr(db_zone, field, value)
+
+    db.flush()
+    db.refresh(db_zone)
+    return db_zone
+
+
 def get_zone_by_record_id_with_geojson(db: Session, record_id: int) -> Optional[Zone]:
     """Get a zone by primary key id including GeoJSON polygon."""
     query = select(

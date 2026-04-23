@@ -273,11 +273,10 @@ async def update_zone(
             )
 
     try:
-        zone = zone_crud.update_zone(
+        zone = zone_crud.update_zone_by_record_id(
             db,
-            target_zone.zone_id,
+            target_zone.id,
             zone_update,
-            owner_id=target_zone.owner_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
