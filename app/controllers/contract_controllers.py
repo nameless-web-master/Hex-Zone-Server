@@ -38,7 +38,7 @@ def update_location(db, owner, latitude: float, longitude: float) -> dict:
     return member_service.upsert_member_location(db, owner.id, latitude, longitude)
 
 
-def get_members(db, owner, active: bool | None = True) -> list[dict]:
+def get_members(db, owner, active: bool | None = None) -> list[dict]:
     return member_service.list_members(db, owner, active=active)
 
 

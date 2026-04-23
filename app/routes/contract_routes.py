@@ -503,14 +503,15 @@ async def get_new_messages(since: str = Query(...), db: Session = Depends(get_db
     description=(
         "Returns owners visible to the caller based on account role policy. "
         "Administrators see all members in their account; users see only themselves. "
-        "Filter by active state using query parameter active=true/false. "
+        "By default includes both active and inactive members; "
+        "filter by active state using query parameter active=true/false. "
         "Each item includes profile fields, active state, optional location snapshot, and active zones."
     ),
 )
 async def get_members(
     active: bool | None = Query(
-        default=True,
-        description="Filter by member active state. Use false to list inactive members.",
+        default=None,
+        description="Optional active-state filter. Omit to return all members, or set true/false.",
     ),
     owner: Owner = Depends(require_auth),
     db: Session = Depends(get_db),
