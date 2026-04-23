@@ -309,6 +309,7 @@ class ZoneResponse(BaseModel):
     id: int
     zone_id: str
     owner_id: int
+    creator_id: int
     zone_type: ZoneTypeEnum
     name: str
     description: Optional[str]

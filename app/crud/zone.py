@@ -38,7 +38,7 @@ def _geojson_to_geometry(geojson: Optional[dict]):
     return f"SRID=4326;{wkt}"
 
 
-def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
+def create_zone(db: Session, owner_id: int, creator_id: int, zone: ZoneCreate) -> Zone:
     """Create a new zone."""
     h3_cells = zone.h3_cells.copy()
     geo_fence_polygon = None
@@ -62,6 +62,7 @@ def create_zone(db: Session, owner_id: int, zone: ZoneCreate) -> Zone:
     db_zone = Zone(
         zone_id=zone.zone_id,
         owner_id=owner_id,
+        creator_id=creator_id,
         zone_type=ZoneType(zone.zone_type),
         name=zone.name,
         description=zone.description,
@@ -142,6 +143,7 @@ def zone_to_dict(zone: Zone) -> dict[str, Any]:
         "id": zone.id,
         "zone_id": zone.zone_id,
         "owner_id": zone.owner_id,
+        "creator_id": zone.creator_id,
         "zone_type": zone.zone_type,
         "name": zone.name,
         "description": zone.description,
@@ -251,6 +253,21 @@ def update_zone(
     db.flush()
     db.refresh(db_zone)
     return db_zone
+
+
+def get_zone_by_record_id_with_geojson(db: Session, record_id: int) -> Optional[Zone]:
+    """Get a zone by primary key id including GeoJSON polygon."""
+    query = select(
+        Zone,
+        func.ST_AsGeoJSON(Zone.geo_fence_polygon).label("geo_fence_polygon"),
+    ).where(Zone.id == record_id)
+    result = db.execute(query)
+    row = result.first()
+    if not row:
+        return None
+    zone, geojson_text = row
+    apply_zone_geo_fence_geojson(zone, geojson_text)
+    return zone
 
 
 def delete_zone(db: Session, zone_id: str, owner_id: Optional[int] = None) -> bool:

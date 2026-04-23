@@ -268,6 +268,7 @@ class TestH3Conversion:
         zone = Zone(
             zone_id="test-zone",
             owner_id=1,
+            creator_id=1,
             zone_type="geofence",
             name="Test Zone",
             description="desc",
@@ -1421,3 +1422,254 @@ async def test_admin_can_deactivate_user_and_block_login(test_db, override_get_d
             json={"email": "toggle-user@example.com", "password": "SecurePassword123"},
         )
         assert blocked_login.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_zone_create_returns_consistent_identity_fields(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        owner_id, token = await _register_and_login(
+            client,
+            email="zone-create-fields@example.com",
+            zone_id="zone-create-fields",
+            first_name="Zone",
+            last_name="Creator",
+        )
+        response = await client.post(
+            "/zones/",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "zone_id": "ZONE-CREATE-IDENTITY",
+                "zone_type": "warn",
+                "name": "Main Zone",
+                "description": "Main",
+                "h3_cells": [],
+            },
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert isinstance(body["id"], int)
+        assert body["zone_id"] == "ZONE-CREATE-IDENTITY"
+        assert body["owner_id"] == owner_id
+        assert body["creator_id"] == owner_id
+
+
+@pytest.mark.asyncio
+async def test_zone_patch_by_record_id_updates_user_own_zone(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin = await client.post(
+            "/owners/register",
+            json={
+                "email": "zone-admin@example.com",
+                "zone_id": "zone-shared",
+                "first_name": "Zone",
+                "last_name": "Admin",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin.status_code == 201
+        admin_id = admin.json()["id"]
+
+        user = await client.post(
+            "/owners/register",
+            json={
+                "email": "zone-user@example.com",
+                "zone_id": "zone-shared",
+                "first_name": "Zone",
+                "last_name": "User",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user.status_code == 201
+
+        user_login = await client.post(
+            "/owners/login",
+            json={"email": "zone-user@example.com", "password": "SecurePassword123"},
+        )
+        assert user_login.status_code == 200
+        user_headers = {"Authorization": f"Bearer {user_login.json()['access_token']}"}
+
+        created = await client.post(
+            "/zones/",
+            headers=user_headers,
+            json={
+                "zone_id": "USER-ZONE-1",
+                "zone_type": "warn",
+                "name": "User Zone",
+                "description": "Before update",
+                "h3_cells": [],
+            },
+        )
+        assert created.status_code == 201
+        zone_record_id = created.json()["id"]
+
+        patched = await client.patch(
+            f"/zones/{zone_record_id}",
+            headers=user_headers,
+            json={"name": "User Zone Updated"},
+        )
+        assert patched.status_code == 200
+        assert patched.json()["id"] == zone_record_id
+        assert patched.json()["name"] == "User Zone Updated"
+
+
+@pytest.mark.asyncio
+async def test_zone_patch_non_owned_zone_returns_403(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin = await client.post(
+            "/owners/register",
+            json={
+                "email": "zone-admin-403@example.com",
+                "zone_id": "zone-shared-403",
+                "first_name": "Zone",
+                "last_name": "Admin",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin.status_code == 201
+        admin_id = admin.json()["id"]
+
+        user = await client.post(
+            "/owners/register",
+            json={
+                "email": "zone-user-403@example.com",
+                "zone_id": "zone-shared-403",
+                "first_name": "Zone",
+                "last_name": "User",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user.status_code == 201
+
+        admin_login = await client.post(
+            "/owners/login",
+            json={"email": "zone-admin-403@example.com", "password": "SecurePassword123"},
+        )
+        user_login = await client.post(
+            "/owners/login",
+            json={"email": "zone-user-403@example.com", "password": "SecurePassword123"},
+        )
+        assert admin_login.status_code == 200
+        assert user_login.status_code == 200
+
+        admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+        user_headers = {"Authorization": f"Bearer {user_login.json()['access_token']}"}
+
+        admin_zone = await client.post(
+            "/zones/",
+            headers=admin_headers,
+            json={
+                "zone_id": "ADMIN-MAIN-ZONE",
+                "zone_type": "warn",
+                "name": "Admin Main Zone",
+                "description": "Admin zone",
+                "h3_cells": [],
+            },
+        )
+        assert admin_zone.status_code == 201
+        admin_zone_record_id = admin_zone.json()["id"]
+
+        forbidden = await client.patch(
+            f"/zones/{admin_zone_record_id}",
+            headers=user_headers,
+            json={"name": "Not Allowed"},
+        )
+        assert forbidden.status_code == 403
+        assert "forbidden" in _http_error_message(forbidden.json()).lower()
+
+
+@pytest.mark.asyncio
+async def test_zone_limit_exceeded_returns_clear_message(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin = await client.post(
+            "/owners/register",
+            json={
+                "email": "zone-limit-admin@example.com",
+                "zone_id": "zone-limit-shared",
+                "first_name": "Limit",
+                "last_name": "Admin",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin.status_code == 201
+        admin_id = admin.json()["id"]
+
+        user = await client.post(
+            "/owners/register",
+            json={
+                "email": "zone-limit-user@example.com",
+                "zone_id": "zone-limit-shared",
+                "first_name": "Limit",
+                "last_name": "User",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user.status_code == 201
+
+        user_login = await client.post(
+            "/owners/login",
+            json={"email": "zone-limit-user@example.com", "password": "SecurePassword123"},
+        )
+        assert user_login.status_code == 200
+        user_headers = {"Authorization": f"Bearer {user_login.json()['access_token']}"}
+
+        first = await client.post(
+            "/zones/",
+            headers=user_headers,
+            json={
+                "zone_id": "USER-LIMIT-ZONE-1",
+                "zone_type": "warn",
+                "name": "Zone 1",
+                "description": "z1",
+                "h3_cells": [],
+            },
+        )
+        second = await client.post(
+            "/zones/",
+            headers=user_headers,
+            json={
+                "zone_id": "USER-LIMIT-ZONE-2",
+                "zone_type": "warn",
+                "name": "Zone 2",
+                "description": "z2",
+                "h3_cells": [],
+            },
+        )
+        third = await client.post(
+            "/zones/",
+            headers=user_headers,
+            json={
+                "zone_id": "USER-LIMIT-ZONE-3",
+                "zone_type": "warn",
+                "name": "Zone 3",
+                "description": "z3",
+                "h3_cells": [],
+            },
+        )
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert third.status_code == 403
+        assert "zone #2 and zone #3" in _http_error_message(third.json()).lower()

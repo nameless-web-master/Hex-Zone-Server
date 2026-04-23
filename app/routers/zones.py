@@ -38,9 +38,9 @@ def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
     status_code=status.HTTP_201_CREATED,
     summary="Create zone",
     description=(
-        "Create zones with role constraints: administrator can configure only Main "
-        "Zone (Zone #1), while users can configure Zone #2 and Zone #3. "
-        "Rejects invalid/overlapping H3 cells across mixed resolutions."
+        "Create a new zone record. Response always includes id, zone_id, owner_id, and creator_id. "
+        "Role constraints apply: administrator can configure only Main Zone (Zone #1), while users "
+        "can configure Zone #2 and Zone #3. Rejects invalid/overlapping H3 cells across mixed resolutions."
     ),
 )
 async def create_zone(
@@ -76,7 +76,12 @@ async def create_zone(
         )
     
     try:
-        db_zone = zone_crud.create_zone(db, current_user["user_id"], zone)
+        db_zone = zone_crud.create_zone(
+            db,
+            owner_id=current_user["user_id"],
+            creator_id=current_user["user_id"],
+            zone=zone,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except IntegrityError as exc:
@@ -184,18 +189,21 @@ async def get_zone(
 
 
 @router.patch(
-    "/{zone_id}",
+    "/{zone_record_id}",
     response_model=ZoneResponse,
     summary="Update zone",
-    description="Update zone metadata/configuration and validate H3 cell overlap constraints.",
+    description=(
+        "Update zone metadata/configuration by record id. Returns 403 with clear detail when the "
+        "caller is not authorized to edit this zone."
+    ),
 )
 async def update_zone(
-    zone_id: str,
+    zone_record_id: int,
     zone_update: ZoneUpdate,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update a zone."""
+    """Update a zone by record id."""
     owner = owner_crud.get_owner(db, current_user["user_id"])
     if not owner:
         raise HTTPException(
@@ -209,23 +217,49 @@ async def update_zone(
             detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
         )
 
+    target_zone = zone_crud.get_zone_by_record_id_with_geojson(db, zone_record_id)
+    if not target_zone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Zone not found",
+        )
+
+    if owner.role.value == "administrator":
+        if target_zone.owner_id != owner.id or target_zone.creator_id != owner.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: administrators can edit only their own main zone",
+            )
+    else:
+        if target_zone.creator_id != owner.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: users can edit only zones they created",
+            )
+
+    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and zone_update.zone_type is not None and zone_update.zone_type not in PRIVATE_ZONE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
+        )
+
     try:
         zone = zone_crud.update_zone(
             db,
-            zone_id,
+            target_zone.zone_id,
             zone_update,
-            owner_id=current_user["user_id"],
+            owner_id=target_zone.owner_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
-
     if not zone:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Zone not found",
         )
+
     db.commit()
-    updated_zone = zone_crud.get_zone_with_geojson(db, zone_id, owner_id=current_user["user_id"])
+    updated_zone = zone_crud.get_zone_by_record_id_with_geojson(db, zone_record_id)
     if not updated_zone:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

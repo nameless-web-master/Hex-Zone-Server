@@ -47,6 +47,7 @@ class Zone(Base):
     
     # Owner reference
     owner_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True)
+    creator_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Zone configuration
     zone_type = Column(Enum(ZoneType), nullable=False)
@@ -69,6 +70,7 @@ class Zone(Base):
 
     # Relationships
     owner = relationship("Owner", back_populates="zones")
+    creator = relationship("Owner", foreign_keys=[creator_id])
 
     @validates("geo_fence_polygon")
     def validate_geo_fence_polygon(self, key, value):
@@ -81,6 +83,7 @@ class Zone(Base):
     __table_args__ = (
         Index("ix_zone_zone_id", "zone_id"),
         Index("ix_zone_owner_id", "owner_id"),
+        Index("ix_zone_creator_id", "creator_id"),
     )
 
     def __repr__(self) -> str:

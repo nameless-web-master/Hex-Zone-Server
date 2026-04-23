@@ -185,6 +185,36 @@ def init_db():
             conn.execute(text("DROP INDEX IF EXISTS zones_zone_id_key;"))
             conn.execute(text("DROP INDEX IF EXISTS ix_zones_zone_id;"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_zones_zone_id ON zones (zone_id);"))
+            conn.execute(text("ALTER TABLE zones ADD COLUMN IF NOT EXISTS creator_id INTEGER;"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE zones
+                    SET creator_id = owner_id
+                    WHERE creator_id IS NULL;
+                    """
+                )
+            )
+            conn.execute(text("ALTER TABLE zones ALTER COLUMN creator_id SET NOT NULL;"))
+            conn.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1
+                            FROM pg_constraint
+                            WHERE conname = 'fk_zones_creator_owner'
+                        ) THEN
+                            ALTER TABLE zones
+                            ADD CONSTRAINT fk_zones_creator_owner
+                            FOREIGN KEY (creator_id) REFERENCES owners(id) ON DELETE CASCADE;
+                        END IF;
+                    END$$;
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_zone_creator_id ON zones (creator_id);"))
 
             # Backward-compatible schema patch for older deployments missing member location fields.
             conn.execute(

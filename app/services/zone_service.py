@@ -95,6 +95,7 @@ def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
     zone = Zone(
         zone_id=payload.get("id") or f"{owner.id}-{count + 1}",
         owner_id=owner.id,
+        creator_id=owner.id,
         zone_type=CONTRACT_TO_MODEL_ZONE_TYPE[zone_type],
         name=payload["name"],
         parameters={
