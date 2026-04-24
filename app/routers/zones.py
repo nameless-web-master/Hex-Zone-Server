@@ -12,16 +12,9 @@ from app.crud import owner as owner_crud
 from app.crud import zone as zone_crud
 from app.database import get_db
 from app.models.zone import Zone, ZoneType
-from app.schemas.schemas import AccountTypeEnum
 from app.services.access_policy import visible_zone_owner_ids
 
 router = APIRouter(prefix="/zones", tags=["zones"])
-
-PRIVATE_ZONE_TYPES = {
-    "warn",
-    "alert",
-    "geofence",
-}
 
 CANONICAL_ZONE_TYPES = {
     "geofence",
@@ -475,11 +468,6 @@ async def create_zone(
         )
 
     normalized = _normalize_payload(zone.model_dump(exclude_none=True), partial=False)
-    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and normalized["type"] not in PRIVATE_ZONE_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
-        )
 
     # Check zone limit
     _, count = check_zone_limit(db, current_user["user_id"])
@@ -705,11 +693,6 @@ async def update_zone(
         "config": normalized.get("config", current["config"]),
     }
 
-    if owner.account_type.value == AccountTypeEnum.PRIVATE.value and merged["type"] not in PRIVATE_ZONE_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Private accounts may only create zones of type: {', '.join(sorted(PRIVATE_ZONE_TYPES))}",
-        )
     _validate_zone_payload(merged["type"], merged["geometry"], merged["config"])
 
     target_zone.name = merged["name"]
