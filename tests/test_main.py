@@ -1016,8 +1016,8 @@ async def test_contract_create_zone_accepts_internal_zone_payload_shape(test_db,
 
 
 @pytest.mark.asyncio
-async def test_create_device_duplicate_hid_updates_existing(test_db, override_get_db):
-    """Creating a device with duplicate hid should update existing record."""
+async def test_create_device_duplicate_hid_returns_conflict(test_db, override_get_db):
+    """Creating a device with duplicate hid should return 409, not 500."""
     async with AsyncClient(app=app, base_url="http://test") as client:
         _, owner_token = await _register_and_login(
             client,
@@ -1038,21 +1038,11 @@ async def test_create_device_duplicate_hid_updates_existing(test_db, override_ge
         first = await client.post("/devices/", headers=headers, json=payload)
         assert first.status_code == 201
 
-        duplicate_payload = {
-            **payload,
-            "name": "Updated Name",
-            "address": "Updated Address",
-            "propagate_enabled": False,
-            "update_interval_seconds": 120,
-        }
-        duplicate = await client.post("/devices/", headers=headers, json=duplicate_payload)
-        assert duplicate.status_code == 200
+        duplicate = await client.post("/devices/", headers=headers, json=payload)
+        assert duplicate.status_code == 409
         body = duplicate.json()
-        assert body["hid"] == payload["hid"]
-        assert body["name"] == "Updated Name"
-        assert body["address"] == "Updated Address"
-        assert body["propagate_enabled"] is False
-        assert body["update_interval_seconds"] == 120
+        message = body.get("detail") or body.get("error", {}).get("message", "")
+        assert "already exists" in str(message).lower()
 
 
 def _http_error_message(body: dict) -> str:

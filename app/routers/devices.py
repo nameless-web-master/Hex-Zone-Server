@@ -1,5 +1,5 @@
 """Router for Device endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -50,7 +50,6 @@ def _caller_visibility(db: Session, user_id: int) -> list[int]:
 )
 async def create_device(
     device: DeviceCreate,
-    response: Response,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -61,9 +60,10 @@ async def create_device(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
+    current_count = device_crud.count_devices(db, owner.id)
+    assert_owner_device_capacity(owner, current_count)
+
     try:
-        current_count = device_crud.count_devices(db, owner.id)
-        assert_owner_device_capacity(owner, current_count)
         db_device = device_crud.create_device(db, current_user["user_id"], device)
         db.commit()
     except IntegrityError as exc:
@@ -74,34 +74,10 @@ async def create_device(
             or "devices_hid_key" in error_text
             or ("unique" in error_text and "hid" in error_text)
         ):
-            existing = device_crud.get_device_by_hid(db, device.hid, owner_id=owner.id)
-            if not existing:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Device hid '{device.hid}' already exists",
-                ) from exc
-
-            update_data = DeviceUpdate(
-                **device.model_dump(exclude_unset=True, exclude={"hid", "status"})
-            )
-            updated = device_crud.update_device(
-                db,
-                existing.id,
-                update_data,
-                owner_id=owner.id,
-            )
-            if not updated:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Device hid '{device.hid}' already exists",
-                ) from exc
-            db.commit()
-            db.refresh(updated)
-            hydrated = device_crud.get_device(
-                db, updated.id, owner_ids=[owner.id], load_owner=True
-            )
-            response.status_code = status.HTTP_200_OK
-            return DeviceResponse.model_validate(hydrated or updated)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Device hid '{device.hid}' already exists",
+            ) from exc
         raise
     db.refresh(db_device)
     hydrated = device_crud.get_device(db, db_device.id, owner_ids=[owner.id], load_owner=True)
