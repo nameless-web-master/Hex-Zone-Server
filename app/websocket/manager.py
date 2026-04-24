@@ -91,6 +91,16 @@ class WebSocketManager:
             ]
         await self._broadcast(recipients, "NEW_MESSAGE", payload)
 
+    async def broadcast_to_users(self, user_ids: list[int], event_type: str, payload: dict) -> None:
+        user_id_set = {str(item) for item in user_ids}
+        async with self._lock:
+            recipients = [
+                state
+                for state in self._connections.values()
+                if state.user_id in user_id_set
+            ]
+        await self._broadcast(recipients, event_type, payload)
+
     async def _snapshot_connections(self) -> list[ConnectionState]:
         async with self._lock:
             return list(self._connections.values())

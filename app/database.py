@@ -219,6 +219,24 @@ def init_db():
                 )
             )
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_zone_creator_id ON zones (creator_id);"))
+            conn.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'contractmessagetype') THEN
+                            ALTER TYPE contractmessagetype ADD VALUE IF NOT EXISTS 'UNKNOWN';
+                            ALTER TYPE contractmessagetype ADD VALUE IF NOT EXISTS 'PRIVATE';
+                            ALTER TYPE contractmessagetype ADD VALUE IF NOT EXISTS 'PA';
+                            ALTER TYPE contractmessagetype ADD VALUE IF NOT EXISTS 'SERVICE';
+                            ALTER TYPE contractmessagetype ADD VALUE IF NOT EXISTS 'WELLNESS_CHECK';
+                            ALTER TYPE contractmessagetype ADD VALUE IF NOT EXISTS 'PERMISSION';
+                            ALTER TYPE contractmessagetype ADD VALUE IF NOT EXISTS 'CHAT';
+                        END IF;
+                    END$$;
+                    """
+                )
+            )
 
             # Backward-compatible schema patch for older deployments missing member location fields.
             conn.execute(

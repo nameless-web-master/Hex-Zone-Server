@@ -8,6 +8,9 @@ from app.models.message import Message
 from app.models.member_location import MemberLocation
 from app.models.push_token import PushToken
 from app.models.zone_message_event import ZoneMessageEvent
+from app.models.message_block import MessageBlock
+from app.models.zone_membership import ZoneMembership
+from app.models.access_schedule import AccessSchedule
 
 __all__ = [
     "Owner",
@@ -19,4 +22,7 @@ __all__ = [
     "MemberLocation",
     "PushToken",
     "ZoneMessageEvent",
+    "MessageBlock",
+    "ZoneMembership",
+    "AccessSchedule",
 ]

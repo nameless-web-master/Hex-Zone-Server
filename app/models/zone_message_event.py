@@ -13,6 +13,13 @@ class ContractMessageType(str, enum.Enum):
     PANIC = "PANIC"
     NS_PANIC = "NS_PANIC"
     SENSOR = "SENSOR"
+    UNKNOWN = "UNKNOWN"
+    PRIVATE = "PRIVATE"
+    PA = "PA"
+    SERVICE = "SERVICE"
+    WELLNESS_CHECK = "WELLNESS_CHECK"
+    PERMISSION = "PERMISSION"
+    CHAT = "CHAT"
 
 
 class ZoneMessageEvent(Base):

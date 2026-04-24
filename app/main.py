@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.database import init_db
-from app.routers import owners, devices, zones, utils, messages
+from app.routers import owners, devices, zones, utils, messages, message_feature
 from app.routes.contract_routes import router as contract_router
 from app.utils.api_response import error_response
 from app.websocket.routes import router as websocket_router
@@ -155,6 +155,7 @@ app.include_router(devices.router)
 app.include_router(zones.router)
 app.include_router(messages.router)
 app.include_router(utils.router)
+app.include_router(message_feature.router)
 app.include_router(contract_router)
 app.include_router(websocket_router)
 

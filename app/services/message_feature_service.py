@@ -1,0 +1,101 @@
+"""Geo propagation message workflows."""
+from datetime import datetime
+
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from app.models import MessageBlock, Owner, ZoneMembership, ZoneMessageEvent
+from app.models.zone_message_event import ContractMessageType
+from app.schemas.message_feature import MessageFeatureType, PropagationMessageCreate
+from app.services.access_policy import visible_owner_ids
+from app.services.geospatial_service import evaluate_member_zones
+
+
+def _to_contract_type(message_type: MessageFeatureType) -> ContractMessageType:
+    return ContractMessageType(message_type.value)
+
+
+def _is_blocked(db: Session, recipient_owner_id: int, sender_owner_id: int, message_type: MessageFeatureType) -> bool:
+    block = (
+        db.query(MessageBlock)
+        .filter(
+            MessageBlock.owner_id == recipient_owner_id,
+            or_(
+                MessageBlock.blocked_owner_id == sender_owner_id,
+                MessageBlock.blocked_message_type == message_type.value,
+            ),
+        )
+        .first()
+    )
+    return block is not None
+
+
+def create_geo_propagated_message(db: Session, sender: Owner, payload: PropagationMessageCreate) -> dict:
+    candidate_owner_ids = visible_owner_ids(db, sender, include_inactive=False)
+    zone_ids = evaluate_member_zones(
+        db,
+        payload.position.latitude,
+        payload.position.longitude,
+        candidate_owner_ids,
+    )
+
+    if payload.receiver_owner_id:
+        candidate_recipients = [payload.receiver_owner_id]
+    else:
+        member_rows = (
+            db.query(ZoneMembership.owner_id)
+            .filter(ZoneMembership.zone_id.in_(zone_ids))
+            .distinct()
+            .all()
+        )
+        candidate_recipients = [row[0] for row in member_rows]
+        if sender.id not in candidate_recipients:
+            candidate_recipients.append(sender.id)
+
+    delivered_owner_ids: list[int] = []
+    blocked_owner_ids: list[int] = []
+    for owner_id in candidate_recipients:
+        if _is_blocked(db, owner_id, sender.id, payload.type):
+            blocked_owner_ids.append(owner_id)
+            continue
+        delivered_owner_ids.append(owner_id)
+
+    metadata = {
+        "hid": payload.hid,
+        "tt": payload.tt.isoformat(),
+        "msg": payload.msg,
+        "position": {
+            "latitude": payload.position.latitude,
+            "longitude": payload.position.longitude,
+        },
+        "city": payload.city,
+        "province": payload.province,
+        "country": payload.country,
+        "delivered_owner_ids": delivered_owner_ids,
+        "blocked_owner_ids": blocked_owner_ids,
+        "zone_ids": zone_ids,
+        "to": payload.to,
+        "co": payload.co,
+    }
+
+    event = ZoneMessageEvent(
+        zone_id=(zone_ids[0] if zone_ids else sender.zone_id),
+        sender_id=sender.id,
+        type=_to_contract_type(payload.type),
+        text=str(payload.msg.get("description") or payload.msg.get("title") or payload.type.value),
+        metadata_json=metadata,
+        created_at=datetime.utcnow(),
+    )
+    db.add(event)
+    db.flush()
+    db.refresh(event)
+
+    return {
+        "id": event.id,
+        "type": event.type.value,
+        "zone_ids": zone_ids,
+        "delivered_owner_ids": delivered_owner_ids,
+        "blocked_owner_ids": blocked_owner_ids,
+        "created_at": event.created_at.isoformat(),
+        "metadata": metadata,
+    }

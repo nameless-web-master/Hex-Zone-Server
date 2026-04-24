@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import Device, MemberLocation, Owner, PushToken, Zone
 from app.services.access_policy import visible_owner_ids
 from app.services.geospatial_service import evaluate_member_zones
+from app.services.zone_membership_service import refresh_owner_memberships
 
 
 def upsert_member_location(db: Session, owner_id: int, latitude: float, longitude: float) -> dict:
@@ -18,7 +19,10 @@ def upsert_member_location(db: Session, owner_id: int, latitude: float, longitud
         row.longitude = longitude
         row.updated_at = datetime.utcnow()
     db.flush()
+    owner = db.get(Owner, owner_id)
     zone_ids = evaluate_member_zones(db, latitude, longitude, [owner_id])
+    if owner:
+        zone_ids = refresh_owner_memberships(db, owner, latitude, longitude)
     return {"latitude": row.latitude, "longitude": row.longitude, "zones": zone_ids}
 
 
