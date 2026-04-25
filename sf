@@ -1,0 +1,669 @@
+[33mcommit 96de214d33fdf0ddacec4be9d14be6d4ea466f21[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Fri Apr 24 09:52:06 2026 -0500
+
+    fixed-device-post-patch-methods
+
+[33mcommit 2f4656d5d5387a239a376ed3ef6ce2f6e652d246[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Fri Apr 24 07:55:07 2026 -0500
+
+    fixed-message
+
+[33mcommit 110c993a65457a5668b7124596e630685d974df4[m[33m ([m[1;31morigin/onyx[m[33m, [m[1;32monyx[m[33m)[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Fri Apr 24 06:12:11 2026 -0500
+
+    fixed-private-account-zones-types-limit
+
+[33mcommit 63ca09a22e52262432e3e2980a4512c055078f62[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 10:54:56 2026 -0500
+
+    fixed-api-docs
+
+[33mcommit cd77fd535813dc7c9d293d0bfea49be6858392aa[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 10:38:06 2026 -0500
+
+    fixed-port-connection
+
+[33mcommit 65b68ab5e8cccbb9fc78831e1f4250dabe73fb33[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 10:27:45 2026 -0500
+
+    fixed-port-bind
+
+[33mcommit 94b5d5e9cc25135601f79d99aa09e041a0767b7b[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 10:08:00 2026 -0500
+
+    fixed-device-list
+
+[33mcommit 9f1c0cf289e5dcadf88b4f68b5ddc330940fb4a9[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 10:02:59 2026 -0500
+
+    fixed-owners-list
+
+[33mcommit 048a8bc7c5083adb281e93debf01084c166d58e6[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 09:59:23 2026 -0500
+
+    fixed-list-of-memebers
+
+[33mcommit 49335a5edf5e83bdee5bd13d9255ce30bdee7ae7[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 09:49:09 2026 -0500
+
+    fixed-owner-filter
+
+[33mcommit 51efef9f98abe72148569bcec77879e6816a596d[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 09:37:14 2026 -0500
+
+    fixed-filter-member-in-active
+
+[33mcommit 18b48010d88f6ff37c3d7f2c46d6e1e372356ccc[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 09:14:17 2026 -0500
+
+    fixed-multi-zones-creation
+
+[33mcommit 1584f99167f787e81b4132a962bb9f37c4a7822b[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 08:56:49 2026 -0500
+
+    fixed-zones-type
+
+[33mcommit 80aefadc79fb1e952b24cafb592df32227cd60c3[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 07:09:24 2026 -0500
+
+    fixed-zones-param
+
+[33mcommit 13334b6b0fd0abd05630fcfe545d72b5570cd8b8[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 06:41:52 2026 -0500
+
+    fixed-zones-sync
+
+[33mcommit 2fdba314e3d081e25895199f49503579328a539c[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 06:35:50 2026 -0500
+
+    fixed-id
+
+[33mcommit e9fe141b94c647509b929b180c9845887836a325[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 06:29:12 2026 -0500
+
+    fixed-zone-record-id-issue
+
+[33mcommit 27a7094f09b851d672168c329770e655047d40b7[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 06:19:10 2026 -0500
+
+    fixed-rone-record-id
+
+[33mcommit fe4a7457135b2c02bc919036180ac5cd8c7ae148[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 06:07:45 2026 -0500
+
+    fixed-zone-update-issue
+
+[33mcommit 21e578053c2963f748d7314e4e5c023d8a53ceb3[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 06:01:05 2026 -0500
+
+    fixed-zone-update
+
+[33mcommit bbc2b3b66418d40819bf30341cea27aca48490ec[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Thu Apr 23 03:17:20 2026 -0500
+
+    fixed-device-limit
+
+[33mcommit e1f810b32688b12a184298f7b02c3ab49241036b[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Tue Apr 21 20:59:07 2026 -0500
+
+    fixed-unique-setting
+
+[33mcommit da52f4c6f321df7a08f4c72c5f7ce7cf68c41a7d[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Tue Apr 21 20:55:09 2026 -0500
+
+    fixed-registration-code
+
+[33mcommit 149467f43d440926d283bd5d918649863f6f2acf[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Sun Apr 19 21:50:42 2026 -0500
+
+    fixed-zones-owner-id
+
+[33mcommit b13ee9d6870dd263f174ff5bab4d5ada64f22328[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Sun Apr 19 21:14:56 2026 -0500
+
+    fixed-private-cells-visible
+
+[33mcommit a7a3dedd38da1e09acc053ee911e97e02da43bff[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Sun Apr 19 20:33:21 2026 -0500
+
+    fixed-api-docs
+
+[33mcommit 5d1a6b55e5cc3203ccea24f31391a7fa27415c42[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Sun Apr 19 19:35:36 2026 -0500
+
+    fixed-private-account-device
+
+[33mcommit 601a4247cbecf4a4c24f238be17a1c1abb0df75a[m
+Author: nameless-web-master <nameless20001027@gmail.com>
+Date:   Sat Apr 18 20:46:53 2026 -0500
+
+    fixed-overroll
+
+[33mcommit f1d98af5cd84af0ee3699f2464f75f31f5c24663[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Sun Apr 19 04:38:29 2026 +0300
+
+    fixed-onwers-foreignkey
+
+[33mcommit bf31d05ac18406069d3e32d4af7d45ad9ec913e9[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Sun Apr 19 04:35:48 2026 +0300
+
+    fixed-account-management-qa
+
+[33mcommit 4959cdc37ea101b26acd9cc57a58331957c0d8ed[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Fri Apr 17 14:19:57 2026 +0300
+
+    fixed-members-endpoint
+
+[33mcommit edc974c82c1f802b9c2ca232e14c71fc82dfec34[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Fri Apr 17 14:07:04 2026 +0300
+
+    fixed-members-db-schema
+
+[33mcommit 20c264c4c6861774f26caa5d1cf03980f6004b7c[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Fri Apr 17 12:45:31 2026 +0300
+
+    fixed-message-save-internal-server-error
+
+[33mcommit 862b307027c4c7b169e6d575176ad961f2fea386[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Fri Apr 17 12:37:27 2026 +0300
+
+    fixed-message-api
+
+[33mcommit e8b8c0da3b9fde82047ca06952ec1094695d7039[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 16 22:59:05 2026 +0300
+
+    fixed-ws-connection
+
+[33mcommit 3eb7d747cd1d536acd867d4d7d5eebc93b24f366[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 16 22:17:30 2026 +0300
+
+    fixed-message-management
+
+[33mcommit e009137a04d332c8a484fe489beea6699defe520[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 16 19:04:40 2026 +0300
+
+    fixed-device-get-list
+
+[33mcommit 1daab32380192576a6ac6f8eb865b7e4c6a62239[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 16 18:30:56 2026 +0300
+
+    fixed-device-state
+
+[33mcommit da9184e8c10394127edaa84420514b2809371a77[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 16 17:35:28 2026 +0300
+
+    fixed-new-requirement
+
+[33mcommit 51f4a33a3dd12adb473222791d7b01843ddf5258[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 18:29:04 2026 +0300
+
+    fixed-polygon-save
+
+[33mcommit 904ecf6053f88c1c0b68b10f000c6073c38f19fc[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 18:20:32 2026 +0300
+
+    fixed-zone-route
+
+[33mcommit 5801a8f9a95c45a91c034ffcc73fa6d81c9f6497[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 18:07:29 2026 +0300
+
+    fixed-font-case
+
+[33mcommit 16efd9fd1aabaf92c2afa51c31a0dce1fee9660b[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 17:32:56 2026 +0300
+
+    fixed-owner-route
+
+[33mcommit 72eb04e50d0f6cda5bc5ea5b9358a6e2207acb00[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 16:31:45 2026 +0300
+
+    fixed-db-routes
+
+[33mcommit 564b5c63f9dd3642502e67e7b27fc1ae3966095c[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 16:11:02 2026 +0300
+
+    fixed-db-migration
+
+[33mcommit 6f68055072500cecb0b9c295339bbafe2981b0e0[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 15:44:37 2026 +0300
+
+    fixed-message-event
+
+[33mcommit 46e27a795acda1e16dba7a7f22a0e3a13c46418d[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 15:36:58 2026 +0300
+
+    fixed-all-db
+
+[33mcommit b3fb4b7b091b6956f803178968a22e30d8500caf[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 15:19:12 2026 +0300
+
+    fixed-device-daken
+
+[33mcommit 3b901e8a3795b8de51547b6480d082fba52720a3[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 15:10:37 2026 +0300
+
+    fiex-all-server-api-schema
+
+[33mcommit 36d3b8ed25fe2c6d2aaddd53c2e29edfaa94191b[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 12:50:30 2026 +0300
+
+    fixed-owner-validator
+
+[33mcommit 84bf03063973f84fc354799fc1503674e4efc94d[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 12:39:41 2026 +0300
+
+    fixed-zone-key
+
+[33mcommit 340b3a08528783de0e8d42ea2bbee919748246c1[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Wed Apr 15 12:35:52 2026 +0300
+
+    update-server
+
+[33mcommit 6d5062df70b9f0bd3ff70ee7c586e0a45fa5a2d3[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 12:30:16 2026 +0300
+
+    fixed-qr-code-join
+
+[33mcommit f4a46be3bdcf58c6d9449b58a4eb0610d39aaba1[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 12:13:46 2026 +0300
+
+    fixed-qr-code-generation
+
+[33mcommit c38a8d848990f23e16ab4528fb836c270ed1074b[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 11:56:52 2026 +0300
+
+    fixed-zones-list
+
+[33mcommit d120cc5b865f52c20d6451125969b2d603129aed[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 11:53:08 2026 +0300
+
+    fixed-zones-unique
+
+[33mcommit 7c5fd04c59dd062f6abdaae7beb427972235094e[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 11:46:38 2026 +0300
+
+    fixed-zones-share
+
+[33mcommit d774d01156061b990b5077276baea23fb068d772[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 11:34:17 2026 +0300
+
+    fixed-zone-id-unique
+
+[33mcommit 50fad481b16020a5f801c80377ff5af08675e784[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 11:27:01 2026 +0300
+
+    fixed-zone-id
+
+[33mcommit f007bbaaded0b2c390dc19b356b6303bac284d75[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 05:51:37 2026 +0300
+
+    fixed-personal-zone-id-interal-server-erro
+
+[33mcommit 4a953d1ee1b75de45c5019fdab8e72164ef555f1[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 05:42:56 2026 +0300
+
+    fixed-personal-zone-id
+
+[33mcommit d995c46d1588ed27850a00d37b127e74920a9454[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 03:51:07 2026 +0300
+
+    update-message-management
+
+[33mcommit 0208f6b824959dd126996c14a819837bfd0477d5[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Tue Apr 14 02:04:44 2026 +0300
+
+    fixed-devices-db-schema
+
+[33mcommit 6930ebf5882b63f3067ab9a0928edad87063dfd2[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 19:50:35 2026 +0300
+
+    fixed-all-geojson
+
+[33mcommit ebc6339fa6669eca24fe0f6dd845341454d5c646[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 19:38:17 2026 +0300
+
+    fixed-zones-geojson
+
+[33mcommit 267385ad360853eac76d8109a81aba54bfde64a9[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 19:24:38 2026 +0300
+
+    fixed-zones-geometry
+
+[33mcommit 17d2dc782cd6601964c6f105f040d669c84d140d[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 18:57:55 2026 +0300
+
+    fixed-onwers-WKT
+
+[33mcommit f96a7257f78425c091a4f4a1463d46248c36f135[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 18:43:19 2026 +0300
+
+    fixed-onwers-validate
+
+[33mcommit f6751e96bab77c55713803c249017a16dd453a05[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 18:36:24 2026 +0300
+
+    fixed-onwers-cors-error
+
+[33mcommit 45823d55f6d29210255d404647a6de6999c114bf[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 18:25:23 2026 +0300
+
+    fixed-zones-ewkt
+
+[33mcommit f64c28d09f1a2faf03bc3c1087b9fe4de2a3dbc2[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 18:15:32 2026 +0300
+
+    fixed-zones-psycopg2
+
+[33mcommit 77d17378f41affe9f86fbc857a77d62457a1f969[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 17:51:51 2026 +0300
+
+    fixed-zones-other-error
+
+[33mcommit 5495e4e6e1af83a457567fdcade3fa363f899003[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 17:41:51 2026 +0300
+
+    fixed-zones-cors-error
+
+[33mcommit 2abd3b5f49ac54534522158933937510b289dbb8[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 17:32:32 2026 +0300
+
+    fixed-zones-internal-server-error
+
+[33mcommit 66d27a13afc0a619af400ad8e7ddc94cf0c3f4d8[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 16:55:21 2026 +0300
+
+    fixed-owners
+
+[33mcommit e2ce75c71d1960647f3d6096509b1cc046b0c191[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 16:41:42 2026 +0300
+
+    fixed-getting-polygon
+
+[33mcommit e094787b90dd3f79f8501e2b4d3f0cecc0d0b28f[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 16:13:49 2026 +0300
+
+    migrate-db-zone
+
+[33mcommit 6475034033fde98d24be5f5960cf67ea8c089911[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 15:16:22 2026 +0300
+
+    fixed-zone-polygon-type
+
+[33mcommit 962d48f1043d254e5e11750e44e7b92b27f14b34[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 11:54:34 2026 +0300
+
+    fixed-zone-bug
+
+[33mcommit e991c6eccd83e34f33c9309085ca25ff1ad50b21[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 11:50:52 2026 +0300
+
+    fixed-zone-swagger
+
+[33mcommit e183116f73682b8f243a77de10bb204a1d476c69[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Mon Apr 13 11:44:40 2026 +0300
+
+    fixed-zone-crud
+
+[33mcommit c2c142502143f46733716a5f922789ceca155922[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 19:09:47 2026 +0300
+
+    fixed-db-async-setting
+
+[33mcommit 7346bed295f3b4bf2f268b2cff466610cfe5a636[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 18:33:51 2026 +0300
+
+    fixed-db-env
+
+[33mcommit ed7392797759b074d90487b5a6b59bffa2bf1ab2[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 18:25:32 2026 +0300
+
+    fixed-docker
+
+[33mcommit fca870e33c5e206d88cfae86c267eb40a92d66c5[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 18:09:41 2026 +0300
+
+    fixed-database-6
+
+[33mcommit b6c2d13c6b90fdd3f30c1c9a18d4802e3cee76ac[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 17:59:38 2026 +0300
+
+    fixed-database-5
+
+[33mcommit 6f03beb48d8a6cda3ba6b3dbbe4eaa2d06522d8a[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 17:48:40 2026 +0300
+
+    fixed-database-4
+
+[33mcommit edd26e0368b7e96b2a8fee344568176484b0645e[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 17:43:47 2026 +0300
+
+    fixed-database-3
+
+[33mcommit 8c5492dbfb96e5f6c75da3f70baa6adb444bb1e8[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 17:38:13 2026 +0300
+
+    fixed-database-2
+
+[33mcommit 5d8fe2b21c87fe9a22e196adf47816c421be044a[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 17:35:04 2026 +0300
+
+    fixed-database-1
+
+[33mcommit bcb957afe1ca0d2c2a8658821fb9fbfbe6dd6fe7[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 17:33:00 2026 +0300
+
+    fixed-database
+
+[33mcommit 43985bb4a8b420b9472ee12700fb8f8a9a502477[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 17:00:22 2026 +0300
+
+    fixed-command
+
+[33mcommit c9c794d99ab32ac59a10716247df296ddccb583c[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 16:51:01 2026 +0300
+
+    fixed-db-url
+
+[33mcommit f6029a578ca935edb77b5758f5fb1437b11949a6[m
+Merge: a69548f 680ac3b
+Author: nameless <nameless20001027@gmail.com>
+Date:   Thu Apr 9 16:44:11 2026 +0300
+
+    Merge pull request #5 from nameless-web-master/railway/code-change-VVhG1a
+    
+    Create PostGIS extension on app startup
+
+[33mcommit 680ac3bd1a6d2857eb612b0e3e4cb70834f5663c[m
+Author: railway-app[bot] <68434857+railway-app[bot]@users.noreply.github.com>
+Date:   Thu Apr 9 13:43:49 2026 +0000
+
+    fix: create PostGIS extension in init_db before create_all
+
+[33mcommit a69548f32c82b4136d2ff35778bedf55f228563c[m
+Merge: 84e7ae2 17b26b2
+Author: nameless <nameless20001027@gmail.com>
+Date:   Thu Apr 9 16:33:12 2026 +0300
+
+    Merge pull request #4 from nameless-web-master/railway/code-change-BYRCsF
+    
+    Fix async database URL for asyncpg driver
+
+[33mcommit 17b26b2d82f039bf832b7c857ce448a0140f66ab[m
+Author: railway-app[bot] <68434857+railway-app[bot]@users.noreply.github.com>
+Date:   Thu Apr 9 13:32:41 2026 +0000
+
+    fix: rewrite postgresql:// to postgresql+asyncpg:// in database.py
+
+[33mcommit 84e7ae2f8af45e54f797de9aad07af38cbcf0175[m
+Merge: 18ae24d d92d31c
+Author: nameless <nameless20001027@gmail.com>
+Date:   Thu Apr 9 16:30:42 2026 +0300
+
+    Merge pull request #3 from nameless-web-master/railway/code-change-DL9YKE
+    
+    Add psycopg2-binary to requirements
+
+[33mcommit d92d31ccd940ff14a6eaac17c1aac053d2b1cedc[m
+Author: railway-app[bot] <68434857+railway-app[bot]@users.noreply.github.com>
+Date:   Thu Apr 9 13:30:18 2026 +0000
+
+    fix: add psycopg2-binary dependency to requirements.txt
+
+[33mcommit 18ae24d3cffb1fb006da095076f7c6d409cf5a94[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 16:19:46 2026 +0300
+
+    fixed-env
+
+[33mcommit a263b5eab226e7d678bc4499a46de4f91bc814f1[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 16:18:39 2026 +0300
+
+    fixed-emnv
+
+[33mcommit 7914c7657236bffbcb1d39c0359e578ac5728e68[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 16:00:01 2026 +0300
+
+    fixed-docker-compose-db-url
+
+[33mcommit aa286a37bcb6e164b4b3d8d85074884786d5d86a[m
+Merge: e47a7ff 29f1527
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 15:32:40 2026 +0300
+
+    fix railway db connection properly
+
+[33mcommit e47a7fff7e16f4e1f9da52e6a0a4c4277f90b789[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 15:31:22 2026 +0300
+
+    fix railway db connection properly
+
+[33mcommit 29f1527f192c542077006de74f2f67ad7960e3fd[m
+Merge: 8a90188 b1e51c7
+Author: nameless <nameless20001027@gmail.com>
+Date:   Thu Apr 9 07:15:19 2026 -0500
+
+    Merge pull request #2 from nameless-web-master/railway/code-change-rPPRfl
+    
+    Make DATABASE_URL required from environment
+
+[33mcommit b1e51c7a77814aea1abc9a0d334f05a3e5bf5324[m
+Author: railway-app[bot] <68434857+railway-app[bot]@users.noreply.github.com>
+Date:   Thu Apr 9 12:14:54 2026 +0000
+
+    fix(config): remove hardcoded DATABASE_URL default in app/core/config.py
+
+[33mcommit 8a90188c06d5fba15fdb56de2782fca0c9bcdb5e[m
+Merge: 0a1d1c8 167aaad
+Author: nameless <nameless20001027@gmail.com>
+Date:   Thu Apr 9 07:12:39 2026 -0500
+
+    Merge pull request #1 from nameless-web-master/railway/code-change-O0UOre
+    
+    Fix database URL configuration for Railway deployment
+
+[33mcommit 167aaade979956457d4302269d88482847bee14a[m
+Author: railway-app[bot] <68434857+railway-app[bot]@users.noreply.github.com>
+Date:   Thu Apr 9 12:11:37 2026 +0000
+
+    fix: use asyncpg dialect and SettingsConfigDict in config.py
+
+[33mcommit 0a1d1c8840061c1739373a75dece2a0185b5922f[m
+Author: Onyx <david.roy1027@gmail.com>
+Date:   Thu Apr 9 14:51:05 2026 +0300
+
+    first commit

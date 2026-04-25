@@ -6,6 +6,15 @@ from app.models import Owner, Zone
 from app.models.zone import ZoneType
 from app.core.h3_utils import has_h3_overlap, validate_h3_cell
 from app.services.access_policy import visible_zone_owner_ids
+from app.services.zone_policy import (
+    account_owner_ids_for_policy,
+    build_capabilities,
+    count_zones_for_owners,
+    enforce_can_create,
+    ensure_unique_zone_name,
+    ensure_zone_edit_allowed,
+    normalize_zone_name,
+)
 
 CONTRACT_TO_MODEL_ZONE_TYPE = {
     "polygon": ZoneType.GEOFENCE,
@@ -53,26 +62,10 @@ def _serialize_zone(zone: Zone) -> dict:
 
 
 def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
-    count = db.query(Zone).filter(Zone.owner_id == owner.id).count()
-    if owner.role.value == "administrator":
-        if count >= 1:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Administrator can only configure Main Zone (Zone #1)",
-            )
-    else:
-        if count >= 2:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User can only configure Zone #2 and Zone #3",
-            )
-        account_owner_id = owner.account_owner_id or owner.id
-        main_zone_exists = db.query(Zone.id).filter(Zone.owner_id == account_owner_id).first()
-        if not main_zone_exists:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Main Zone must be configured by administrator before user zones",
-            )
+    account_owner_ids = account_owner_ids_for_policy(db, owner)
+    total_zones = count_zones_for_owners(db, account_owner_ids)
+    capabilities = build_capabilities(owner.role.value, total_zones)
+    enforce_can_create(capabilities)
 
     zone_type = payload["type"]
     if zone_type not in CONTRACT_TO_MODEL_ZONE_TYPE:
@@ -90,12 +83,15 @@ def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
                 detail="Overlapping H3 cells are not allowed across resolutions",
             )
 
+    normalized_name = normalize_zone_name(payload.get("name"))
+    ensure_unique_zone_name(db, account_owner_ids, normalized_name)
+
     zone = Zone(
-        zone_id=payload.get("id") or f"{owner.id}-{count + 1}",
+        zone_id=payload.get("id") or f"{owner.id}-{total_zones + 1}",
         owner_id=owner.id,
         creator_id=owner.id,
         zone_type=CONTRACT_TO_MODEL_ZONE_TYPE[zone_type],
-        name=payload["name"],
+        name=normalized_name,
         parameters={
             "contractType": zone_type,
             "geometry": geometry,
@@ -124,8 +120,12 @@ def update_zone(db: Session, owner: Owner, zone_id: str, payload: dict) -> dict:
     zone = db.query(Zone).filter(Zone.owner_id == owner.id, Zone.zone_id == zone_id).first()
     if not zone:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Zone not found")
-    if payload.get("name"):
-        zone.name = payload["name"]
+    ensure_zone_edit_allowed(owner, zone)
+    if payload.get("name") is not None:
+        normalized_name = normalize_zone_name(payload["name"])
+        owner_ids = account_owner_ids_for_policy(db, owner)
+        ensure_unique_zone_name(db, owner_ids, normalized_name, exclude_zone_record_id=zone.id)
+        zone.name = normalized_name
     if payload.get("type"):
         zone_type = payload["type"]
         if zone_type not in CONTRACT_TO_MODEL_ZONE_TYPE:

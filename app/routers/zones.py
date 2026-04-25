@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.h3_utils import has_h3_overlap, validate_h3_cell
 from app.core.security import get_current_user
 from app.crud import owner as owner_crud
@@ -13,6 +12,15 @@ from app.crud import zone as zone_crud
 from app.database import get_db
 from app.models.zone import Zone, ZoneType
 from app.services.access_policy import visible_zone_owner_ids
+from app.services.zone_policy import (
+    account_owner_ids_for_policy,
+    build_capabilities,
+    count_zones_for_owners,
+    enforce_can_create,
+    ensure_unique_zone_name,
+    ensure_zone_edit_allowed,
+    normalize_zone_name,
+)
 
 router = APIRouter(prefix="/zones", tags=["zones"])
 
@@ -165,6 +173,16 @@ class ZoneContractResponse(BaseModel):
             }
         }
     )
+
+
+class ZoneCapabilitiesResponse(BaseModel):
+    role: str
+    can_create_zone: bool
+    remaining_total: int
+    remaining_for_role: int
+    max_total: int
+    reserved_for_standard_users: int
+    reason: Optional[str] = None
 
 
 def _normalize_zone_type(raw_type: Optional[str]) -> Optional[str]:
@@ -411,12 +429,6 @@ def _serialize_zone(zone: Zone) -> dict[str, Any]:
     }
 
 
-def check_zone_limit(db: Session, owner_id: int) -> tuple[bool, int]:
-    """Check if owner has reached zone limit."""
-    zone_count = zone_crud.count_zones(db, owner_id)
-    return zone_count >= settings.MAX_ZONES_PER_USER, zone_count
-
-
 @router.post(
     "/",
     response_model=ZoneContractResponse,
@@ -469,22 +481,16 @@ async def create_zone(
 
     normalized = _normalize_payload(zone.model_dump(exclude_none=True), partial=False)
 
-    # Check zone limit
-    _, count = check_zone_limit(db, current_user["user_id"])
-    if owner.role.value == "administrator" and count >= 1:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Administrator can only configure Main Zone (Zone #1)",
-        )
-    if owner.role.value == "user" and count >= 2:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User can only configure Zone #2 and Zone #3",
-        )
-    
+    account_owner_ids = account_owner_ids_for_policy(db, owner)
+    total_zones = count_zones_for_owners(db, account_owner_ids)
+    capabilities = build_capabilities(owner.role.value, total_zones)
+    enforce_can_create(capabilities)
+
     geometry = normalized.get("geometry", {})
     config = normalized.get("config", {})
     zone_type = normalized["type"]
+    normalized_name = normalize_zone_name(normalized["name"])
+    ensure_unique_zone_name(db, account_owner_ids, normalized_name)
     _validate_zone_payload(zone_type, geometry, config)
 
     model_zone_type = CANONICAL_TO_MODEL_ZONE_TYPE[zone_type]
@@ -496,7 +502,7 @@ async def create_zone(
         owner_id=owner.id,
         creator_id=owner.id,
         zone_type=model_zone_type,
-        name=normalized["name"],
+        name=normalized_name,
         parameters={
             "contractType": zone_type,
             "geometry": geometry,
@@ -570,6 +576,27 @@ async def list_zones(
         limit=limit,
     )
     return [ZoneContractResponse.model_validate(_serialize_zone(zone)) for zone in zones]
+
+
+@router.get(
+    "/capabilities",
+    response_model=ZoneCapabilitiesResponse,
+    summary="Get zone capabilities for caller",
+    description="Expose role-aware zone creation capabilities for frontend UX decisions.",
+)
+async def get_zone_capabilities(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    owner = owner_crud.get_owner(db, current_user["user_id"])
+    if not owner:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Owner not found", "error_code": "OWNER_NOT_FOUND"},
+        )
+    owner_ids = account_owner_ids_for_policy(db, owner)
+    total_zones = count_zones_for_owners(db, owner_ids)
+    return ZoneCapabilitiesResponse.model_validate(build_capabilities(owner.role.value, total_zones).to_dict())
 
 
 @router.get(
@@ -671,18 +698,7 @@ async def update_zone(
             detail="Zone not found",
         )
 
-    if owner.role.value == "administrator":
-        if target_zone.owner_id != owner.id or target_zone.creator_id != owner.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: administrators can edit only their own main zone",
-            )
-    else:
-        if target_zone.creator_id != owner.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: users can edit only zones they created",
-            )
+    ensure_zone_edit_allowed(owner, target_zone)
 
     normalized = _normalize_payload(zone_update.model_dump(exclude_none=True), partial=True)
     current = _serialize_zone(target_zone)
@@ -693,9 +709,12 @@ async def update_zone(
         "config": normalized.get("config", current["config"]),
     }
 
+    normalized_name = normalize_zone_name(merged["name"])
+    owner_ids = account_owner_ids_for_policy(db, owner)
+    ensure_unique_zone_name(db, owner_ids, normalized_name, exclude_zone_record_id=target_zone.id)
     _validate_zone_payload(merged["type"], merged["geometry"], merged["config"])
 
-    target_zone.name = merged["name"]
+    target_zone.name = normalized_name
     target_zone.zone_type = CANONICAL_TO_MODEL_ZONE_TYPE[merged["type"]]
     target_zone.h3_cells = _extract_h3_cells(merged["config"])
     target_zone.geo_fence_polygon = _extract_geo_fence_polygon(merged["geometry"])

@@ -34,7 +34,13 @@ class Settings(BaseSettings):
     H3_MIN_RESOLUTION: int = 0
     H3_MAX_RESOLUTION: int = 15
 
-    # Account
+    # Zone capacity policy
+    # Defaults keep current behavior (3 total zones) while reserving at least
+    # one slot for standard users. Increase MAX_ZONES_TOTAL to 5 in future
+    # deployments without code changes.
+    MAX_ZONES_TOTAL: int = 3
+    RESERVED_FOR_STANDARD_USERS: int = 1
+    # Legacy setting retained for compatibility with older code paths.
     MAX_ZONES_PER_USER: int = 3
     REGISTRATION_CODE_EXPIRE_HOURS: int = 24
 
