@@ -12,9 +12,10 @@ from app.crud import owner as owner_crud
 from app.database import get_db
 from app.middleware.auth import require_auth
 from app.models import Device, MemberLocation, Owner
-from app.schemas.schemas import MessageVisibilityEnum, ZoneMessageCreate, ZoneMessageResponse
+from app.schemas.schemas import ZoneMessageCreate, ZoneMessageResponse
 from app.utils.api_response import success_response
 from app.websocket.manager import ws_manager
+from app.domain.message_types import MessageScope, normalize_message_type, type_category, type_scope
 
 router = APIRouter(tags=["contract"])
 
@@ -141,16 +142,28 @@ class ZoneUpsertRequest(BaseModel):
 
 class MessageCreateRequest(BaseModel):
     zoneId: str = Field(description="Target zone identifier")
-    type: Literal["NORMAL", "PANIC", "NS_PANIC", "SENSOR"]
+    type: str
     text: str = Field(description="Message body")
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_type_aliases(cls, data: Any):
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        value = payload.get("type")
+        if isinstance(value, str):
+            payload["type"] = normalize_message_type(value).value
+        return payload
 
 
 class ChatMessageCreateRequest(BaseModel):
     """Chat payload accepted by /messages (no trailing slash)."""
 
     message: str = Field(..., min_length=1, max_length=16_384)
-    visibility: Literal["public", "private"]
+    type: str | None = None
+    visibility: Literal["public", "private"] | None = None
     receiver_id: int | None = Field(
         default=None,
         ge=1,
@@ -516,16 +529,34 @@ async def post_messages(
             detail="Sender owner not found",
         )
 
-    if chat_payload.visibility == MessageVisibilityEnum.PRIVATE.value and chat_payload.receiver_id is None:
+    normalized_chat_payload = ZoneMessageCreate(
+        message=chat_payload.message,
+        visibility=chat_payload.visibility,
+        type=chat_payload.type,
+        receiver_id=chat_payload.receiver_id,
+    )
+    try:
+        derived_scope = type_scope(normalize_message_type(normalized_chat_payload.type or ""))
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="receiver_id is required for private messages",
+            detail={"error_code": "INVALID_MESSAGE_TYPE", "message": "Unsupported message type."},
+        ) from exc
+    if derived_scope == MessageScope.PRIVATE and normalized_chat_payload.receiver_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "MISSING_RECIPIENT_FOR_PRIVATE_TYPE",
+                "message": "receiver_id is required for private-scope message types.",
+            },
         )
-
-    if chat_payload.visibility == MessageVisibilityEnum.PUBLIC.value and chat_payload.receiver_id is not None:
+    if derived_scope == MessageScope.PUBLIC and normalized_chat_payload.receiver_id is not None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="receiver_id must be omitted for public messages",
+            detail={
+                "error_code": "INVALID_TYPE_SCOPE_COMBINATION",
+                "message": "receiver_id must be omitted for public-scope message types.",
+            },
         )
 
     if chat_payload.receiver_id is not None:
@@ -544,19 +575,19 @@ async def post_messages(
     db_message = message_crud.create_message(
         db,
         sender_id=sender.id,
-        payload=ZoneMessageCreate(
-            message=chat_payload.message,
-            visibility=chat_payload.visibility,
-            receiver_id=chat_payload.receiver_id,
-        ),
+        payload=normalized_chat_payload,
     )
     db.commit()
+    canonical_type = normalize_message_type(db_message.message_type)
 
     return ZoneMessageResponse(
         id=db_message.id,
         zone_id=sender.zone_id,
         sender_id=db_message.sender_id,
         receiver_id=db_message.receiver_id,
+        type=db_message.message_type,
+        category=type_category(canonical_type).value,
+        scope=type_scope(canonical_type).value,
         visibility=db_message.visibility,
         message=db_message.message,
         created_at=db_message.created_at,

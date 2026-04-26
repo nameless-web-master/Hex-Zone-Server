@@ -60,6 +60,75 @@ def init_db():
                     """
                 )
             )
+            conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_scope ON messages (scope);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_message_type ON messages (message_type);"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE messages
+                    SET message_type = CASE
+                        WHEN message_type = 'NORMAL' THEN 'SERVICE'
+                        WHEN message_type = 'PANIC' THEN 'PANIC'
+                        WHEN message_type = 'NS_PANIC' THEN 'NS_PANIC'
+                        WHEN message_type = 'SENSOR' THEN 'SENSOR'
+                        ELSE COALESCE(message_type, 'SERVICE')
+                    END;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE messages
+                    SET scope = CASE
+                        WHEN message_type IN ('PRIVATE', 'PERMISSION', 'CHAT') THEN 'private'
+                        ELSE 'public'
+                    END
+                    WHERE scope IS NULL OR scope = '';
+                    """
+                )
+            )
+            conn.execute(text("UPDATE messages SET visibility = scope WHERE visibility IS DISTINCT FROM scope::messagevisibility;"))
+            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS receiver_id INTEGER;"))
+            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS category VARCHAR(16);"))
+            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
+            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS body JSONB DEFAULT '{}'::jsonb;"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE zone_message_events
+                    SET type = CASE WHEN type::text = 'NORMAL' THEN 'SERVICE' ELSE type::text END::text;
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE zone_message_events
+                    SET category = CASE
+                        WHEN type::text IN ('SENSOR','PANIC','NS_PANIC','UNKNOWN') THEN 'Alarm'
+                        WHEN type::text IN ('PRIVATE','PA','SERVICE','WELLNESS_CHECK') THEN 'Alert'
+                        WHEN type::text IN ('PERMISSION','CHAT') THEN 'Access'
+                        ELSE 'Alert'
+                    END
+                    WHERE category IS NULL OR category = '';
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE zone_message_events
+                    SET scope = CASE
+                        WHEN type::text IN ('PRIVATE','PERMISSION','CHAT') THEN 'private'
+                        ELSE 'public'
+                    END
+                    WHERE scope IS NULL OR scope = '';
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_zone_message_events_type ON zone_message_events (type);"))
             conn.execute(
                 text(
                     """

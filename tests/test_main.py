@@ -416,7 +416,7 @@ async def test_zone_messages_visibility_and_filtering(test_db, override_get_db):
             headers=headers_owner_1,
             json={
                 "message": "Public from owner 1",
-                "visibility": "public",
+                "type": "SERVICE",
             },
         )
         assert response.status_code == 201
@@ -426,7 +426,7 @@ async def test_zone_messages_visibility_and_filtering(test_db, override_get_db):
             headers=headers_owner_4,
             json={
                 "message": "Public from owner 4",
-                "visibility": "public",
+                "type": "SERVICE",
             },
         )
         assert response.status_code == 201
@@ -436,7 +436,7 @@ async def test_zone_messages_visibility_and_filtering(test_db, override_get_db):
             headers=headers_owner_1,
             json={
                 "message": "Private 1 -> 2",
-                "visibility": "private",
+                "type": "PRIVATE",
                 "receiver_id": owner_2_id,
             },
         )
@@ -447,7 +447,7 @@ async def test_zone_messages_visibility_and_filtering(test_db, override_get_db):
             headers=headers_owner_3,
             json={
                 "message": "Private 3 -> 2 (not visible to owner 1)",
-                "visibility": "private",
+                "type": "PRIVATE",
                 "receiver_id": owner_2_id,
             },
         )
@@ -492,7 +492,7 @@ async def test_get_messages_without_trailing_slash_returns_200(test_db, override
         create_resp = await client.post(
             "/messages/",
             headers=headers,
-            json={"message": "Listed without slash", "visibility": "public"},
+            json={"message": "Listed without slash", "type": "SERVICE"},
         )
         assert create_resp.status_code == 201
 
@@ -505,7 +505,7 @@ async def test_get_messages_without_trailing_slash_returns_200(test_db, override
         assert isinstance(body, list)
         assert len(body) >= 1
         entry = body[0]
-        for key in ("id", "zone_id", "sender_id", "visibility", "message", "created_at"):
+        for key in ("id", "zone_id", "sender_id", "type", "scope", "category", "visibility", "message", "created_at"):
             assert key in entry
         assert any(item["message"] == "Listed without slash" for item in body)
 
@@ -542,7 +542,7 @@ async def test_post_contract_messages_still_returns_201(test_db, override_get_db
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "zoneId": zone_id,
-                "type": "NORMAL",
+                "type": "SERVICE",
                 "text": "Contract path message",
                 "metadata": {},
             },
@@ -570,12 +570,14 @@ async def test_post_messages_accepts_public_chat_payload_without_trailing_slash(
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "message": "Hello world",
-                "visibility": "public",
+                "type": "SERVICE",
             },
         )
         assert response.status_code == 201
         payload = response.json()
         assert payload["message"] == "Hello world"
+        assert payload["type"] == "SERVICE"
+        assert payload["scope"] == "public"
         assert payload["visibility"] == "public"
         assert payload["receiver_id"] is None
         for key in ("id", "zone_id", "sender_id", "created_at"):
@@ -606,17 +608,82 @@ async def test_post_messages_accepts_private_chat_payload_without_trailing_slash
             headers={"Authorization": f"Bearer {sender_token}"},
             json={
                 "message": "123123123",
-                "visibility": "private",
+                "type": "PRIVATE",
                 "receiver_id": receiver_id,
             },
         )
         assert response.status_code == 201
         payload = response.json()
         assert payload["message"] == "123123123"
+        assert payload["type"] == "PRIVATE"
+        assert payload["scope"] == "private"
         assert payload["visibility"] == "private"
         assert payload["receiver_id"] == receiver_id
         for key in ("id", "zone_id", "sender_id", "created_at"):
             assert key in payload
+
+
+@pytest.mark.asyncio
+async def test_post_messages_private_type_without_receiver_rejected(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, token = await _register_and_login(
+            client,
+            email="missing-recipient@example.com",
+            zone_id="chat-zone-private",
+            first_name="Chat",
+            last_name="Sender",
+        )
+        response = await client.post(
+            "/messages",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"message": "missing receiver", "type": "PRIVATE"},
+        )
+        assert response.status_code == 422
+        payload = response.json()
+        assert payload["error_code"] == "MISSING_RECIPIENT_FOR_PRIVATE_TYPE"
+
+
+@pytest.mark.asyncio
+async def test_post_messages_legacy_visibility_is_mapped_with_deprecation_header(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, token = await _register_and_login(
+            client,
+            email="legacy-visibility@example.com",
+            zone_id="chat-zone-legacy",
+            first_name="Legacy",
+            last_name="Client",
+        )
+        response = await client.post(
+            "/messages",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"message": "legacy payload", "visibility": "public"},
+        )
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["type"] == "SERVICE"
+        assert payload["scope"] == "public"
+        assert response.headers.get("X-API-Deprecated")
+
+
+@pytest.mark.asyncio
+async def test_post_messages_type_alias_is_normalized(test_db, override_get_db):
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        _, token = await _register_and_login(
+            client,
+            email="alias-normalization@example.com",
+            zone_id="chat-zone-alias",
+            first_name="Alias",
+            last_name="Client",
+        )
+        response = await client.post(
+            "/messages",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"message": "alias payload", "type": "NS PANIC"},
+        )
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["type"] == "NS_PANIC"
+        assert payload["category"] == "Alarm"
 
 
 def test_websocket_ws_messages_alias_accepts_valid_token(test_db, override_get_db):

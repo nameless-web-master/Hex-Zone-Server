@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.models import AccessSchedule, Owner, ZoneMessageEvent
 from app.models.owner import OwnerRole
-from app.models.zone_message_event import ContractMessageType
 from app.schemas.message_feature import PropagationMessageCreate
+from app.domain.message_types import CanonicalMessageType, type_category, type_scope
 
 
 def _build_schedule_query(db: Session, zone_id: str, payload: PropagationMessageCreate):
@@ -84,8 +84,11 @@ def process_permission_message(db: Session, sender: Owner, payload: PropagationM
     event = ZoneMessageEvent(
         zone_id=zone_id,
         sender_id=sender.id,
-        type=ContractMessageType.PERMISSION,
+        type=CanonicalMessageType.PERMISSION.value,
+        category=type_category(CanonicalMessageType.PERMISSION),
+        scope=type_scope(CanonicalMessageType.PERMISSION),
         text=sender_message["text"],
+        body_json=payload.msg,
         metadata_json={
             "permission_payload": payload.msg,
             "decision": decision,

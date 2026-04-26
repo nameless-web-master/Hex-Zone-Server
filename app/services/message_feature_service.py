@@ -5,14 +5,20 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import MessageBlock, Owner, ZoneMembership, ZoneMessageEvent
-from app.models.zone_message_event import ContractMessageType
 from app.schemas.message_feature import MessageFeatureType, PropagationMessageCreate
 from app.services.access_policy import visible_owner_ids
 from app.services.geospatial_service import evaluate_member_zones
+from app.domain.message_types import (
+    CanonicalMessageType,
+    MessageScope,
+    normalize_message_type,
+    type_category,
+    type_scope,
+)
 
 
-def _to_contract_type(message_type: MessageFeatureType) -> ContractMessageType:
-    return ContractMessageType(message_type.value)
+def _to_canonical_type(message_type: MessageFeatureType) -> CanonicalMessageType:
+    return normalize_message_type(message_type.value)
 
 
 def _is_blocked(db: Session, recipient_owner_id: int, sender_owner_id: int, message_type: MessageFeatureType) -> bool:
@@ -31,6 +37,8 @@ def _is_blocked(db: Session, recipient_owner_id: int, sender_owner_id: int, mess
 
 
 def create_geo_propagated_message(db: Session, sender: Owner, payload: PropagationMessageCreate) -> dict:
+    canonical_type = _to_canonical_type(payload.type)
+    scope = type_scope(canonical_type)
     candidate_owner_ids = visible_owner_ids(db, sender, include_inactive=False)
     zone_ids = evaluate_member_zones(
         db,
@@ -38,6 +46,9 @@ def create_geo_propagated_message(db: Session, sender: Owner, payload: Propagati
         payload.position.longitude,
         candidate_owner_ids,
     )
+
+    if scope == MessageScope.PRIVATE and payload.receiver_owner_id is None:
+        raise ValueError("receiver_owner_id is required for private-scope message types")
 
     if payload.receiver_owner_id:
         candidate_recipients = [payload.receiver_owner_id]
@@ -81,8 +92,12 @@ def create_geo_propagated_message(db: Session, sender: Owner, payload: Propagati
     event = ZoneMessageEvent(
         zone_id=(zone_ids[0] if zone_ids else sender.zone_id),
         sender_id=sender.id,
-        type=_to_contract_type(payload.type),
+        receiver_id=payload.receiver_owner_id,
+        type=canonical_type.value,
+        category=type_category(canonical_type),
+        scope=scope,
         text=str(payload.msg.get("description") or payload.msg.get("title") or payload.type.value),
+        body_json=payload.msg,
         metadata_json=metadata,
         created_at=datetime.utcnow(),
     )
@@ -92,7 +107,9 @@ def create_geo_propagated_message(db: Session, sender: Owner, payload: Propagati
 
     return {
         "id": event.id,
-        "type": event.type.value,
+        "type": event.type,
+        "category": event.category.value,
+        "scope": event.scope.value,
         "zone_ids": zone_ids,
         "delivered_owner_ids": delivered_owner_ids,
         "blocked_owner_ids": blocked_owner_ids,

@@ -1,13 +1,17 @@
 """Router for zone message endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.schemas.schemas import MessageVisibilityEnum, ZoneMessageCreate, ZoneMessageResponse
+from app.schemas.schemas import ZoneMessageCreate, ZoneMessageResponse
 from app.crud import message as message_crud
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user
+from app.domain.message_types import MessageScope, normalize_message_type, type_category, type_scope
 
 router = APIRouter(prefix="/messages", tags=["messages"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -31,27 +35,47 @@ router = APIRouter(prefix="/messages", tags=["messages"])
 )
 async def create_message(
     payload: ZoneMessageCreate,
+    response: Response,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a public or private zone message."""
+    """Create a typed zone message with derived scope."""
     sender = owner_crud.get_owner(db, current_user["user_id"])
     if not sender:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Sender owner not found",
+            detail={"error_code": "OWNER_NOT_FOUND", "message": "Sender owner not found"},
         )
 
-    if payload.visibility == MessageVisibilityEnum.PRIVATE and payload.receiver_id is None:
+    try:
+        canonical_type = normalize_message_type(payload.type or "")
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="receiver_id is required for private messages",
+            detail={"error_code": "INVALID_MESSAGE_TYPE", "message": "Unsupported message type."},
+        ) from exc
+    derived_scope = type_scope(canonical_type)
+
+    if payload.visibility is not None and not payload.type:
+        logger.warning("Deprecated legacy visibility-only payload used on /messages endpoint")
+        response.headers["X-API-Deprecated"] = "visibility-only payload is deprecated; send type"
+
+    if derived_scope == MessageScope.PRIVATE and payload.receiver_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "MISSING_RECIPIENT_FOR_PRIVATE_TYPE",
+                "message": "receiver_id is required for private-scope message types.",
+            },
         )
 
-    if payload.visibility == MessageVisibilityEnum.PUBLIC and payload.receiver_id is not None:
+    if derived_scope == MessageScope.PUBLIC and payload.receiver_id is not None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="receiver_id must be omitted for public messages",
+            detail={
+                "error_code": "INVALID_TYPE_SCOPE_COMBINATION",
+                "message": "receiver_id must be omitted for public-scope message types.",
+            },
         )
 
     if payload.receiver_id is not None:
@@ -59,12 +83,15 @@ async def create_message(
         if not receiver:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Receiver owner not found",
+                detail={"error_code": "RECEIVER_NOT_FOUND", "message": "Receiver owner not found"},
             )
         if receiver.zone_id != sender.zone_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Receiver is not in the sender zone",
+                detail={
+                    "error_code": "RECEIVER_NOT_IN_ZONE",
+                    "message": "Receiver is not in the sender zone",
+                },
             )
 
     db_message = message_crud.create_message(db, sender_id=sender.id, payload=payload)
@@ -75,6 +102,9 @@ async def create_message(
         zone_id=sender.zone_id,
         sender_id=db_message.sender_id,
         receiver_id=db_message.receiver_id,
+        type=db_message.message_type,
+        category=type_category(canonical_type).value,
+        scope=derived_scope.value,
         visibility=db_message.visibility,
         message=db_message.message,
         created_at=db_message.created_at,
@@ -129,6 +159,9 @@ async def _list_zone_messages_for_owner(
             zone_id=owner.zone_id,
             sender_id=message.sender_id,
             receiver_id=message.receiver_id,
+            type=message.message_type,
+            category=type_category(normalize_message_type(message.message_type)).value,
+            scope=type_scope(normalize_message_type(message.message_type)).value,
             visibility=message.visibility,
             message=message.message,
             created_at=message.created_at,

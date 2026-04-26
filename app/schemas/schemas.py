@@ -410,12 +410,27 @@ class ZoneMessageCreate(BaseModel):
     """Create a zone message."""
 
     message: str = Field(..., min_length=1, max_length=16_384)
-    visibility: MessageVisibilityEnum
+    type: Optional[str] = Field(default=None, description="Canonical message type")
+    visibility: Optional[MessageVisibilityEnum] = Field(
+        default=None,
+        description="Deprecated legacy field. If sent without type, maps private->PRIVATE, public->SERVICE.",
+    )
     receiver_id: Optional[int] = Field(
         None,
         ge=1,
         description="Required when visibility is private; omitted for public",
     )
+
+    @model_validator(mode="after")
+    def validate_type_or_visibility(self):
+        from app.domain.message_types import LEGACY_VISIBILITY_TO_TYPE
+
+        if self.type:
+            return self
+        if self.visibility:
+            self.type = LEGACY_VISIBILITY_TO_TYPE[self.visibility.value].value
+            return self
+        raise ValueError("type is required (or send legacy visibility for temporary compatibility)")
 
 
 class ZoneMessageResponse(BaseModel):
@@ -425,6 +440,9 @@ class ZoneMessageResponse(BaseModel):
     zone_id: str = Field(..., description="Zone UUID (not the internal DB id)")
     sender_id: int
     receiver_id: Optional[int]
+    type: str
+    category: str
+    scope: str
     visibility: MessageVisibilityEnum
     message: str
     created_at: datetime

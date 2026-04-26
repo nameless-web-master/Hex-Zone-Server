@@ -4,17 +4,21 @@ from sqlalchemy import and_, or_
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session, aliased
 from app.models import Message, Owner
-from app.models.message import MessageType, MessageVisibility
+from app.models.message import MessageVisibility
 from app.schemas.schemas import ZoneMessageCreate
+from app.domain.message_types import normalize_message_type, type_scope, MessageScope
 
 
 def create_message(db: Session, sender_id: int, payload: ZoneMessageCreate) -> Message:
     """Create a new message."""
+    canonical_type = normalize_message_type(payload.type or "")
+    derived_scope = type_scope(canonical_type)
     db_message = Message(
         sender_id=sender_id,
         receiver_id=payload.receiver_id,
-        visibility=MessageVisibility(payload.visibility),
-        message_type=MessageType.NORMAL,
+        visibility=MessageVisibility(derived_scope.value),
+        scope=MessageScope(derived_scope.value),
+        message_type=canonical_type.value,
         message=payload.message,
     )
     db.add(db_message)

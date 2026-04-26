@@ -4,18 +4,20 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.domain.message_types import CanonicalMessageType, normalize_message_type
+
 
 class MessageFeatureType(str, Enum):
-    SENSOR = "SENSOR"
-    PANIC = "PANIC"
-    NS_PANIC = "NS_PANIC"
-    UNKNOWN = "UNKNOWN"
-    PRIVATE = "PRIVATE"
-    PA = "PA"
-    SERVICE = "SERVICE"
-    WELLNESS_CHECK = "WELLNESS_CHECK"
-    PERMISSION = "PERMISSION"
-    CHAT = "CHAT"
+    SENSOR = CanonicalMessageType.SENSOR.value
+    PANIC = CanonicalMessageType.PANIC.value
+    NS_PANIC = CanonicalMessageType.NS_PANIC.value
+    UNKNOWN = CanonicalMessageType.UNKNOWN.value
+    PRIVATE = CanonicalMessageType.PRIVATE.value
+    PA = CanonicalMessageType.PA.value
+    SERVICE = CanonicalMessageType.SERVICE.value
+    WELLNESS_CHECK = CanonicalMessageType.WELLNESS_CHECK.value
+    PERMISSION = CanonicalMessageType.PERMISSION.value
+    CHAT = CanonicalMessageType.CHAT.value
 
 
 class CoordinatePayload(BaseModel):
@@ -35,6 +37,17 @@ class PropagationMessageCreate(BaseModel):
     to: str | None = Field(default=None, description="QR/access zone target")
     co: str | None = Field(default=None, description="Device zone id")
     receiver_owner_id: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_type_aliases(cls, data):
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        value = payload.get("type")
+        if isinstance(value, str):
+            payload["type"] = normalize_message_type(value).value
+        return payload
 
 
 class BlockRuleCreate(BaseModel):
@@ -95,6 +108,8 @@ class PermissionDecisionResponse(BaseModel):
 class PropagationMessageResponse(BaseModel):
     id: str
     type: str
+    category: str | None = None
+    scope: str | None = None
     zone_ids: list[str]
     delivered_owner_ids: list[int]
     blocked_owner_ids: list[int]

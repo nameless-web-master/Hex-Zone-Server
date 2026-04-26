@@ -1,25 +1,17 @@
 """Zone message model."""
 from datetime import datetime
 import enum
-from sqlalchemy import Column, Integer, Text, DateTime, Enum, ForeignKey, Index
+from sqlalchemy import Column, Integer, Text, DateTime, Enum, ForeignKey, Index, String
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.domain.message_types import CanonicalMessageType, MessageScope
 
 
 class MessageVisibility(str, enum.Enum):
     """Message visibility enumeration."""
 
-    PUBLIC = "public"
-    PRIVATE = "private"
-
-
-class MessageType(str, enum.Enum):
-    """Message type classification."""
-
-    NORMAL = "NORMAL"
-    PANIC = "PANIC"
-    NS_PANIC = "NS_PANIC"
-    SENSOR = "SENSOR"
+    PUBLIC = MessageScope.PUBLIC.value
+    PRIVATE = MessageScope.PRIVATE.value
 
 
 class Message(Base):
@@ -31,7 +23,8 @@ class Message(Base):
     sender_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True)
     receiver_id = Column(Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=True, index=True)
     visibility = Column(Enum(MessageVisibility), nullable=False)
-    message_type = Column(Enum(MessageType), nullable=False, default=MessageType.NORMAL)
+    scope = Column(Enum(MessageScope), nullable=False, default=MessageScope.PUBLIC, index=True)
+    message_type = Column(String(32), nullable=False, default=CanonicalMessageType.SERVICE.value, index=True)
     message = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
@@ -41,6 +34,7 @@ class Message(Base):
     __table_args__ = (
         Index("ix_message_sender_receiver", "sender_id", "receiver_id"),
         Index("ix_message_visibility_created", "visibility", "created_at"),
+        Index("ix_message_type_created", "message_type", "created_at"),
     )
 
     def __repr__(self) -> str:

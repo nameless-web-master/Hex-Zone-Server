@@ -65,13 +65,24 @@ async def create_geo_message(
         return {
             "id": "permission-flow",
             "type": "PERMISSION",
+            "category": "Access",
+            "scope": "private",
             "zone_ids": [payload.to or sender.zone_id],
             "delivered_owner_ids": permission_result["delivered_owner_ids"],
             "blocked_owner_ids": [],
             "created_at": payload.tt.isoformat(),
         }
 
-    result = message_feature_service.create_geo_propagated_message(db, sender, payload)
+    try:
+        result = message_feature_service.create_geo_propagated_message(db, sender, payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "MISSING_RECIPIENT_FOR_PRIVATE_TYPE",
+                "message": "receiver_owner_id is required for private-scope message types.",
+            },
+        ) from exc
     db.commit()
 
     await ws_manager.broadcast_to_users(result["delivered_owner_ids"], "NEW_GEO_MESSAGE", result)
@@ -104,13 +115,24 @@ async def create_geo_message_with_api_key(
         return {
             "id": "permission-flow",
             "type": "PERMISSION",
+            "category": "Access",
+            "scope": "private",
             "zone_ids": [payload.to or sender.zone_id],
             "delivered_owner_ids": permission_result["delivered_owner_ids"],
             "blocked_owner_ids": [],
             "created_at": payload.tt.isoformat(),
         }
 
-    result = message_feature_service.create_geo_propagated_message(db, sender, payload)
+    try:
+        result = message_feature_service.create_geo_propagated_message(db, sender, payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "MISSING_RECIPIENT_FOR_PRIVATE_TYPE",
+                "message": "receiver_owner_id is required for private-scope message types.",
+            },
+        ) from exc
     db.commit()
     await ws_manager.broadcast_to_users(result["delivered_owner_ids"], "NEW_GEO_MESSAGE", result)
     return result
@@ -207,8 +229,11 @@ async def list_new_feature_messages(
         {
             "id": row.id,
             "zoneId": row.zone_id,
-            "type": row.type.value,
+            "type": row.type,
+            "category": row.category.value,
+            "scope": row.scope.value,
             "text": row.text,
+            "body": row.body_json,
             "metadata": row.metadata_json,
             "createdAt": row.created_at.isoformat(),
         }
