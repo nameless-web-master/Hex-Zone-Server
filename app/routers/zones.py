@@ -1,7 +1,7 @@
 """Router for Zone endpoints."""
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -463,6 +463,9 @@ def _serialize_zone(zone: Zone) -> dict[str, Any]:
                 }
             },
         },
+        500: {
+            "description": "Zone was created but could not be loaded for response.",
+        },
     },
     response_description="Created zone in canonical response shape.",
 )
@@ -536,10 +539,24 @@ async def create_zone(
     response_description="List of canonical zone objects visible to caller.",
 )
 async def list_zones(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    owner_id: Optional[int] = Query(None, ge=1),
-    zone_id: Optional[str] = Query(None, min_length=1),
+    skip: int = Query(0, ge=0, description="Pagination offset."),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of zones to return."),
+    owner_id: Optional[int] = Query(
+        None,
+        ge=1,
+        description=(
+            "Filter by owner record id. Allowed only when the requested owner is visible "
+            "to the authenticated caller."
+        ),
+    ),
+    zone_id: Optional[str] = Query(
+        None,
+        min_length=1,
+        description=(
+            "Filter by shared zone identifier (`zone.zone_id` string). "
+            "When provided, returns all caller-visible entries with that shared id."
+        ),
+    ),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -611,11 +628,14 @@ async def get_zone_capabilities(
         404: {
             "description": "Owner or zone not found.",
         },
+        422: {
+            "description": "Invalid zone id path parameter.",
+        },
     },
     response_description="Canonical zone object for the requested DB record.",
 )
 async def get_zone(
-    zone_id: int,
+    zone_id: int = Path(..., ge=1, description="Zone DB record id (`zone.id`)."),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -674,11 +694,14 @@ async def get_zone(
                 }
             },
         },
+        500: {
+            "description": "Zone update was committed but could not be loaded for response.",
+        },
     },
     response_description="Updated canonical zone object.",
 )
 async def update_zone(
-    zone_id: int,
+    zone_id: int = Path(..., ge=1, description="Zone DB record id (`zone.id`)."),
     zone_update: ZoneContractUpdate,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -744,6 +767,9 @@ async def update_zone(
         "This route accepts shared zone identifiers (zone_id string), not DB record IDs."
     ),
     responses={
+        422: {
+            "description": "Invalid shared zone identifier.",
+        },
         404: {
             "description": "Zone not found for the authenticated owner.",
         },
@@ -751,7 +777,14 @@ async def update_zone(
     response_description="Zone deleted successfully.",
 )
 async def delete_zone(
-    zone_id: str,
+    zone_id: str = Path(
+        ...,
+        min_length=1,
+        description=(
+            "Shared zone identifier string (`zone.zone_id`) for the caller-owned zone "
+            "to remove."
+        ),
+    ),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
