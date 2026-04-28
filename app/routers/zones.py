@@ -701,8 +701,8 @@ async def get_zone(
     response_description="Updated canonical zone object.",
 )
 async def update_zone(
-    zone_id: int = Path(..., ge=1, description="Zone DB record id (`zone.id`)."),
     zone_update: ZoneContractUpdate,
+    zone_id: int = Path(..., ge=1, description="Zone DB record id (`zone.id`)."),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
