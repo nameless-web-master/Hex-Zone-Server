@@ -1,4 +1,5 @@
 """Database connection and session management."""
+import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from app.core.config import settings
@@ -26,6 +27,7 @@ session_maker = sessionmaker(
 
 # Base class for models
 Base = declarative_base()
+logger = logging.getLogger(__name__)
 
 
 def get_db() -> Session:
@@ -47,6 +49,14 @@ def init_db():
     Base.metadata.create_all(bind=engine)
 
     if engine.dialect.name == "postgresql":
+        # Run critical compatibility patches in an isolated transaction first.
+        # The broader migration block below can fail on legacy enum/type drift;
+        # this ensures core columns used by active request paths still exist.
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_scope ON messages (scope);"))
+            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
+
         with engine.begin() as conn:
             # Backward-compatible schema patch for older deployments missing owners.zone_id.
             conn.execute(text("ALTER TABLE owners ADD COLUMN IF NOT EXISTS zone_id VARCHAR(100);"))
@@ -60,8 +70,6 @@ def init_db():
                     """
                 )
             )
-            conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_scope ON messages (scope);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_message_type ON messages (message_type);"))
             conn.execute(
                 text(
@@ -89,7 +97,15 @@ def init_db():
                     """
                 )
             )
-            conn.execute(text("UPDATE messages SET visibility = scope WHERE visibility IS DISTINCT FROM scope::messagevisibility;"))
+            try:
+                conn.execute(
+                    text(
+                        "UPDATE messages SET visibility = scope "
+                        "WHERE visibility IS DISTINCT FROM scope::messagevisibility;"
+                    )
+                )
+            except Exception as exc:
+                logger.warning("Skipping legacy visibility backfill: %s", exc)
             conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS receiver_id INTEGER;"))
             conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS category VARCHAR(16);"))
             conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))

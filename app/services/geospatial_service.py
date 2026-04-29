@@ -15,12 +15,27 @@ def evaluate_member_zones(db: Session, latitude: float, longitude: float, candid
         return []
 
     h3_cell = lat_lng_to_h3_cell(latitude, longitude, 13)
-    h3_matches = (
-        db.query(Zone.zone_id)
-        .filter(Zone.owner_id.in_(owner_ids), Zone.active.is_(True), Zone.h3_cells.contains([h3_cell]))
-        .all()
+    h3_sql = text(
+        """
+        SELECT z.zone_id
+        FROM zones z
+        WHERE z.owner_id = ANY(:owner_ids)
+          AND z.active = TRUE
+          AND z.h3_cells IS NOT NULL
+          AND EXISTS (
+              SELECT 1
+              FROM json_array_elements_text(z.h3_cells) AS cell
+              WHERE cell = :h3_cell
+          )
+        """
     )
-    matched = {row[0] for row in h3_matches}
+    matched = {
+        row[0]
+        for row in db.execute(
+            h3_sql,
+            {"owner_ids": owner_ids, "h3_cell": h3_cell},
+        )
+    }
 
     postgis_sql = text(
         """
