@@ -1502,6 +1502,76 @@ async def test_admin_can_deactivate_user_and_block_login(test_db, override_get_d
 
 
 @pytest.mark.asyncio
+async def test_user_list_owners_returns_only_self(test_db, override_get_db):
+    """User role should not see sibling owners in /owners list."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin_register = await client.post(
+            "/owners/register",
+            json={
+                "email": "owners-admin@example.com",
+                "zone_id": "owners-zone",
+                "first_name": "Owners",
+                "last_name": "Admin",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin_register.status_code == 201
+        admin_id = admin_register.json()["id"]
+
+        user_a_register = await client.post(
+            "/owners/register",
+            json={
+                "email": "owners-user-a@example.com",
+                "zone_id": "owners-zone",
+                "first_name": "Owners",
+                "last_name": "UserA",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User A Address",
+            },
+        )
+        assert user_a_register.status_code == 201
+        user_a_id = user_a_register.json()["id"]
+
+        user_b_register = await client.post(
+            "/owners/register",
+            json={
+                "email": "owners-user-b@example.com",
+                "zone_id": "owners-zone",
+                "first_name": "Owners",
+                "last_name": "UserB",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User B Address",
+            },
+        )
+        assert user_b_register.status_code == 201
+        user_b_id = user_b_register.json()["id"]
+
+        user_a_login = await client.post(
+            "/owners/login",
+            json={"email": "owners-user-a@example.com", "password": "SecurePassword123"},
+        )
+        assert user_a_login.status_code == 200
+        user_a_headers = {"Authorization": f"Bearer {user_a_login.json()['access_token']}"}
+
+        list_response = await client.get("/owners/?skip=0&limit=500", headers=user_a_headers)
+        assert list_response.status_code == 200
+        listed_ids = {owner["id"] for owner in list_response.json()}
+        assert listed_ids == {user_a_id}
+        assert admin_id not in listed_ids
+        assert user_b_id not in listed_ids
+
+
+@pytest.mark.asyncio
 async def test_zone_create_returns_consistent_identity_fields(test_db, override_get_db):
     async with AsyncClient(app=app, base_url="http://test") as client:
         owner_id, token = await _register_and_login(

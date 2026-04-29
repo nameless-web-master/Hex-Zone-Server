@@ -65,7 +65,8 @@ def resolve_account_owner_id(
 
 def visible_owner_ids(db: Session, owner: Owner, include_inactive: bool = False) -> list[int]:
     """Return owners visible to caller based on role/account type rules."""
-    if owner.role.value == "user":
+    # Default-deny for non-admin callers: only explicit administrators can see account-wide owners.
+    if owner.role.value != "administrator":
         return [owner.id]
 
     root_id = account_root_id(owner)
@@ -85,7 +86,7 @@ def zone_listing_owner_ids(db: Session, owner: Owner) -> list[int]:
     Administrators see every linked user's zones (same account root).
     Users see only their own zones plus the administrator's main zone (account root).
     """
-    if owner.role.value == "user":
+    if owner.role.value != "administrator":
         root_id = account_root_id(owner)
         if root_id == owner.id:
             return [owner.id]
