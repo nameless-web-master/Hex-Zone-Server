@@ -7,13 +7,14 @@ from app.schemas.schemas import (
     OwnerResponse,
     OwnerUpdate,
     OwnerDetailResponse,
+    OwnerListResponse,
     LoginRequest,
     TokenResponse,
     OwnerRoleEnum,
 )
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user, verify_password, create_access_token
-from app.services.access_policy import resolve_account_owner_id, visible_owner_ids
+from app.services.access_policy import resolve_account_owner_id, visible_owner_ids, messaging_visible_owner_ids
 from app.services.registration_code_service import (
     mint_registration_code,
     require_and_consume_admin_registration_code,
@@ -222,7 +223,7 @@ async def get_owner(
 
 @router.get(
     "/",
-    response_model=list[OwnerResponse],
+    response_model=list[OwnerListResponse],
     summary="List visible owners",
     description=(
         "List owners visible to caller by account policy. Administrators see all "
@@ -249,10 +250,10 @@ async def list_owners(
             detail="Caller not found",
         )
 
-    allowed_ids = visible_owner_ids(db, caller, include_inactive=True)
+    allowed_ids = messaging_visible_owner_ids(db, caller, include_inactive=True)
     owners = owner_crud.list_owners(db, skip=skip, limit=limit)
     owners = [owner for owner in owners if owner.id in allowed_ids]
-    return [OwnerResponse.model_validate(_normalize_owner_name(owner)) for owner in owners]
+    return [OwnerListResponse.model_validate(_normalize_owner_name(owner)) for owner in owners]
 
 
 @router.patch(

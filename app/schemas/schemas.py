@@ -142,6 +142,19 @@ class OwnerResponse(OwnerBase):
         from_attributes = True
 
 
+class OwnerListResponse(BaseModel):
+    """Safe owner list schema for receiver discovery."""
+    id: int
+    first_name: str
+    last_name: str
+    email: EmailStr
+    zone_id: str
+    active: bool
+
+    class Config:
+        from_attributes = True
+
+
 class OwnerDetailResponse(OwnerResponse):
     """Detailed owner response with relationships."""
     devices: List["DeviceResponse"] = []

@@ -9,6 +9,7 @@ from app.crud import message as message_crud
 from app.crud import owner as owner_crud
 from app.core.security import get_current_user
 from app.domain.message_types import MessageScope, normalize_message_type, type_category, type_scope
+from app.services.access_policy import can_message_owner
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 logger = logging.getLogger(__name__)
@@ -78,6 +79,15 @@ async def create_message(
             },
         )
 
+    if payload.visibility is not None and payload.visibility.value != derived_scope.value:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "INVALID_VISIBILITY_FOR_TYPE",
+                "message": "visibility does not match the inferred message type scope.",
+            },
+        )
+
     if payload.receiver_id is not None:
         receiver = owner_crud.get_owner(db, payload.receiver_id)
         if not receiver:
@@ -85,12 +95,28 @@ async def create_message(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error_code": "RECEIVER_NOT_FOUND", "message": "Receiver owner not found"},
             )
-        if receiver.zone_id != sender.zone_id:
+        if not receiver.active:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error_code": "RECEIVER_INACTIVE",
+                    "message": "Receiver account is inactive.",
+                },
+            )
+        if receiver.id == sender.id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error_code": "INVALID_RECEIVER_SELF",
+                    "message": "Sender cannot message self.",
+                },
+            )
+        if not can_message_owner(sender, receiver, require_same_zone=True):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
-                    "error_code": "RECEIVER_NOT_IN_ZONE",
-                    "message": "Receiver is not in the sender zone",
+                    "error_code": "RECEIVER_OUTSIDE_ALLOWED_SCOPE",
+                    "message": "Receiver is outside sender account or zone scope.",
                 },
             )
 

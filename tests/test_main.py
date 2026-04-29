@@ -1502,8 +1502,8 @@ async def test_admin_can_deactivate_user_and_block_login(test_db, override_get_d
 
 
 @pytest.mark.asyncio
-async def test_user_list_owners_returns_only_self(test_db, override_get_db):
-    """User role should not see sibling owners in /owners list."""
+async def test_user_list_owners_returns_scoped_account_receivers(test_db, override_get_db):
+    """User role should see scoped same-account receivers in /owners list."""
     async with AsyncClient(app=app, base_url="http://test") as client:
         admin_register = await client.post(
             "/owners/register",
@@ -1566,9 +1566,192 @@ async def test_user_list_owners_returns_only_self(test_db, override_get_db):
         list_response = await client.get("/owners/?skip=0&limit=500", headers=user_a_headers)
         assert list_response.status_code == 200
         listed_ids = {owner["id"] for owner in list_response.json()}
-        assert listed_ids == {user_a_id}
-        assert admin_id not in listed_ids
-        assert user_b_id not in listed_ids
+        assert {admin_id, user_a_id, user_b_id}.issubset(listed_ids)
+        sample_row = list_response.json()[0]
+        assert "first_name" in sample_row
+        assert "last_name" in sample_row
+        assert "email" in sample_row
+        assert "zone_id" in sample_row
+        assert "active" in sample_row
+
+
+@pytest.mark.asyncio
+async def test_user_members_contains_account_owner_mapping_for_receivers(test_db, override_get_db):
+    """Contract /members should include account_owner_id mapping fields for USER role."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin_register = await client.post(
+            "/owners/register",
+            json={
+                "email": "member-map-admin@example.com",
+                "zone_id": "member-map-zone",
+                "first_name": "Member",
+                "last_name": "Admin",
+                "account_type": "private",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin_register.status_code == 201
+        admin_id = admin_register.json()["id"]
+        user_register = await client.post(
+            "/owners/register",
+            json={
+                "email": "member-map-user@example.com",
+                "zone_id": "member-map-zone",
+                "first_name": "Member",
+                "last_name": "User",
+                "account_type": "private",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "User Address",
+            },
+        )
+        assert user_register.status_code == 201
+
+        user_login = await client.post(
+            "/owners/login",
+            json={"email": "member-map-user@example.com", "password": "SecurePassword123"},
+        )
+        assert user_login.status_code == 200
+        headers = {"Authorization": f"Bearer {user_login.json()['access_token']}"}
+
+        members_response = await client.get("/members", headers=headers)
+        assert members_response.status_code == 200
+        members = members_response.json()["data"]
+        assert len(members) >= 2
+        row = members[0]
+        assert "account_owner_id" in row
+        assert "email" in row
+        assert "zone_id" in row
+        assert "first_name" in row
+        assert "last_name" in row
+
+
+@pytest.mark.asyncio
+async def test_user_private_message_scope_and_receiver_validation(test_db, override_get_db):
+    """USER private messaging should allow in-scope targets and reject invalid receiver cases."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        admin = await client.post(
+            "/owners/register",
+            json={
+                "email": "pm-admin@example.com",
+                "zone_id": "pm-zone",
+                "first_name": "PM",
+                "last_name": "Admin",
+                "account_type": "private_plus",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Admin Address",
+            },
+        )
+        assert admin.status_code == 201
+        admin_id = admin.json()["id"]
+
+        sender_user = await client.post(
+            "/owners/register",
+            json={
+                "email": "pm-sender@example.com",
+                "zone_id": "pm-zone",
+                "first_name": "PM",
+                "last_name": "Sender",
+                "account_type": "private_plus",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "Sender Address",
+            },
+        )
+        assert sender_user.status_code == 201
+        sender_id = sender_user.json()["id"]
+
+        receiver_user = await client.post(
+            "/owners/register",
+            json={
+                "email": "pm-receiver@example.com",
+                "zone_id": "pm-zone",
+                "first_name": "PM",
+                "last_name": "Receiver",
+                "account_type": "private_plus",
+                "role": "user",
+                "account_owner_id": admin_id,
+                "password": "SecurePassword123",
+                "address": "Receiver Address",
+            },
+        )
+        assert receiver_user.status_code == 201
+        receiver_id = receiver_user.json()["id"]
+
+        other_admin = await client.post(
+            "/owners/register",
+            json={
+                "email": "pm-other-admin@example.com",
+                "zone_id": "pm-zone",
+                "first_name": "Other",
+                "last_name": "Admin",
+                "account_type": "private_plus",
+                "role": "administrator",
+                "password": "SecurePassword123",
+                "registration_code": "FREE",
+                "address": "Other Admin Address",
+            },
+        )
+        assert other_admin.status_code == 201
+        outsider_id = other_admin.json()["id"]
+
+        sender_login = await client.post(
+            "/owners/login",
+            json={"email": "pm-sender@example.com", "password": "SecurePassword123"},
+        )
+        assert sender_login.status_code == 200
+        sender_headers = {"Authorization": f"Bearer {sender_login.json()['access_token']}"}
+
+        allowed = await client.post(
+            "/messages",
+            headers=sender_headers,
+            json={"message": "allowed", "type": "PRIVATE", "receiver_id": receiver_id},
+        )
+        assert allowed.status_code == 201
+
+        blocked_scope = await client.post(
+            "/messages",
+            headers=sender_headers,
+            json={"message": "blocked-scope", "type": "PRIVATE", "receiver_id": outsider_id},
+        )
+        assert blocked_scope.status_code == 403
+        assert blocked_scope.json()["error_code"] == "RECEIVER_OUTSIDE_ALLOWED_SCOPE"
+
+        to_self = await client.post(
+            "/messages",
+            headers=sender_headers,
+            json={"message": "self", "type": "PRIVATE", "receiver_id": sender_id},
+        )
+        assert to_self.status_code == 422
+        assert to_self.json()["error_code"] == "INVALID_RECEIVER_SELF"
+
+        admin_login = await client.post(
+            "/owners/login",
+            json={"email": "pm-admin@example.com", "password": "SecurePassword123"},
+        )
+        assert admin_login.status_code == 200
+        admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+        deactivate = await client.patch(
+            f"/owners/{receiver_id}",
+            headers=admin_headers,
+            json={"active": False},
+        )
+        assert deactivate.status_code == 200
+
+        inactive = await client.post(
+            "/messages",
+            headers=sender_headers,
+            json={"message": "inactive", "type": "PRIVATE", "receiver_id": receiver_id},
+        )
+        assert inactive.status_code == 422
+        assert inactive.json()["error_code"] == "RECEIVER_INACTIVE"
 
 
 @pytest.mark.asyncio

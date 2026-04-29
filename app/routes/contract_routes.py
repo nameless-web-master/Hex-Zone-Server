@@ -16,6 +16,7 @@ from app.schemas.schemas import ZoneMessageCreate, ZoneMessageResponse
 from app.utils.api_response import success_response
 from app.websocket.manager import ws_manager
 from app.domain.message_types import MessageScope, normalize_message_type, type_category, type_scope
+from app.services.access_policy import can_message_owner
 
 router = APIRouter(tags=["contract"])
 
@@ -186,6 +187,8 @@ class MemberListItemResponse(BaseModel):
     name: str = Field(description="Owner full name (first + last)")
     first_name: str
     last_name: str
+    email: EmailStr
+    account_owner_id: int
     address: str
     zone_id: str
     active: bool
@@ -559,6 +562,18 @@ async def post_messages(
             },
         )
 
+    if (
+        normalized_chat_payload.visibility is not None
+        and normalized_chat_payload.visibility.value != derived_scope.value
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "INVALID_VISIBILITY_FOR_TYPE",
+                "message": "visibility does not match the inferred message type scope.",
+            },
+        )
+
     if chat_payload.receiver_id is not None:
         receiver = owner_crud.get_owner(db, chat_payload.receiver_id)
         if not receiver:
@@ -566,10 +581,29 @@ async def post_messages(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Receiver owner not found",
             )
-        if receiver.zone_id != sender.zone_id:
+        if not receiver.active:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error_code": "RECEIVER_INACTIVE",
+                    "message": "Receiver account is inactive.",
+                },
+            )
+        if receiver.id == sender.id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error_code": "INVALID_RECEIVER_SELF",
+                    "message": "Sender cannot message self.",
+                },
+            )
+        if not can_message_owner(sender, receiver, require_same_zone=True):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Receiver is not in the sender zone",
+                detail={
+                    "error_code": "RECEIVER_OUTSIDE_ALLOWED_SCOPE",
+                    "message": "Receiver is outside sender account or zone scope.",
+                },
             )
 
     db_message = message_crud.create_message(

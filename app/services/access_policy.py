@@ -80,6 +80,40 @@ def visible_owner_ids(db: Session, owner: Owner, include_inactive: bool = False)
     return owner_ids
 
 
+def messaging_visible_owner_ids(
+    db: Session,
+    owner: Owner,
+    *,
+    include_inactive: bool = False,
+    require_same_zone: bool = True,
+) -> list[int]:
+    """Return owner ids visible for private-message receiver discovery."""
+    root_id = account_root_id(owner)
+    query = db.query(Owner.id).filter((Owner.id == root_id) | (Owner.account_owner_id == root_id))
+    if not include_inactive:
+        query = query.filter(Owner.active.is_(True))
+    if require_same_zone:
+        query = query.filter(Owner.zone_id == owner.zone_id)
+    rows = query.all()
+    owner_ids = [row[0] for row in rows]
+    if owner.id not in owner_ids and (include_inactive or owner.active):
+        owner_ids.append(owner.id)
+    return owner_ids
+
+
+def can_message_owner(sender: Owner, receiver: Owner, *, require_same_zone: bool = True) -> bool:
+    """Check whether sender can message receiver under account/zone policy."""
+    if not receiver.active:
+        return False
+    if sender.id == receiver.id:
+        return False
+    if account_root_id(sender) != account_root_id(receiver):
+        return False
+    if require_same_zone and sender.zone_id != receiver.zone_id:
+        return False
+    return True
+
+
 def zone_listing_owner_ids(db: Session, owner: Owner) -> list[int]:
     """Return owner ids whose zones the caller may list or read.
 

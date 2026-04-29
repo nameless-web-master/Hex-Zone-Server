@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models import Device, MemberLocation, Owner, PushToken, Zone
-from app.services.access_policy import visible_owner_ids
+from app.services.access_policy import messaging_visible_owner_ids
 from app.services.geospatial_service import evaluate_member_zones
 from app.services.zone_membership_service import refresh_owner_memberships
 
@@ -27,7 +27,7 @@ def upsert_member_location(db: Session, owner_id: int, latitude: float, longitud
 
 
 def list_members(db: Session, owner: Owner, active: bool | None = None) -> list[dict]:
-    owner_ids = visible_owner_ids(db, owner, include_inactive=True)
+    owner_ids = messaging_visible_owner_ids(db, owner, include_inactive=True)
     query = db.query(Owner).filter(Owner.id.in_(owner_ids))
     if active is not None:
         query = query.filter(Owner.active.is_(active))
@@ -53,6 +53,8 @@ def list_members(db: Session, owner: Owner, active: bool | None = None) -> list[
                 "name": f"{member.first_name} {member.last_name}".strip(),
                 "first_name": member.first_name,
                 "last_name": member.last_name,
+                "email": member.email,
+                "account_owner_id": member.account_owner_id or member.id,
                 "address": member.address,
                 "zone_id": member.zone_id,
                 "active": member.active,
