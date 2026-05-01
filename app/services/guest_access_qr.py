@@ -29,6 +29,20 @@ def guest_access_path_with_query(zone_id: str, event_id: str | None = None) -> s
     return f"/access?{qs}"
 
 
+def guest_access_path_with_guest_token(secret_token: str) -> str:
+    """Deep-link path using opaque backend token (`gt`), e.g. `/access?gt=…`."""
+    tok = secret_token.strip()
+    qs = urlencode({"gt": tok}, quote_via=quote)
+    return f"/access?{qs}"
+
+
+def guest_access_absolute_url_with_guest_token(secret_token: str) -> str | None:
+    base = guest_access_web_base()
+    if not base:
+        return None
+    return f"{base}{guest_access_path_with_guest_token(secret_token)}"
+
+
 def guest_access_absolute_url(zone_id: str, event_id: str | None = None) -> str | None:
     """Full HTTPS-ready URL if **GUEST_ACCESS_APP_BASE_URL** (or legacy **PUBLIC_WEB_APP_URL**) is set."""
     base = guest_access_web_base()

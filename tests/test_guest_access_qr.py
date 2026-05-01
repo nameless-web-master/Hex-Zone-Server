@@ -41,6 +41,17 @@ def test_absolute_url_none_without_base(monkeypatch):
     assert guest_access_qr.guest_access_absolute_url("Z1") is None
 
 
+def test_guest_access_path_with_gt():
+    p = guest_access_qr.guest_access_path_with_guest_token("abc_xyz")
+    assert p.startswith("/access?")
+    assert "gt=" in p
+
+
+def test_guest_access_absolute_url_with_gt(monkeypatch):
+    monkeypatch.setattr(settings, "GUEST_ACCESS_APP_BASE_URL", "https://app.example.com")
+    assert guest_access_qr.guest_access_absolute_url_with_guest_token("tok") == "https://app.example.com/access?gt=tok"
+
+
 def test_qr_png_non_empty():
     png = guest_access_qr.qr_png_bytes_for_url("https://example.com/access?zid=Z")
     assert png.startswith(b"\x89PNG\r\n\x1a\n")

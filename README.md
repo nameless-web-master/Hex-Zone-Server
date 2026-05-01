@@ -97,7 +97,11 @@ Notes:
 
 Door guests (no JWT): `POST /api/access/permission`, poll `GET /api/access/session/{guest_id}?zone_id=...`.
 
-Administrators (Bearer JWT; **administrator** role and matching `owner.zone_id`): `GET /api/access/qr-link?zone_id=...&event_id=optional` returns `url`, `zone_id`, `path_with_query` (`/access?zid=…`). Optional `GET /api/access/qr.png` returns PNG (needs `GUEST_ACCESS_APP_BASE_URL` or legacy `PUBLIC_WEB_APP_URL`). Unexpected guests: `POST /api/access/approve`, `POST /api/access/reject`.
+**Static deep link (legacy):** `GET /api/access/qr-link?zone_id=...` → `/access?zid=…` (+ optional `eid`). `GET /api/access/qr.png` for PNG (needs `GUEST_ACCESS_APP_BASE_URL`).
+
+**Stored QR tokens (recommended):** Administrator JWT — `POST /api/access/qr-tokens` mints an opaque secret; SPA opens `/access?gt=<secret>`. List `GET /api/access/qr-tokens?zone_id=...`, revoke `POST /api/access/qr-tokens/{id}/revoke?zone_id=...`, resolve URL `GET /api/access/qr-tokens/{id}/link?zone_id=...`, PNG `GET /api/access/qr-tokens/{id}/qr.png?zone_id=...`. Tokens support **expires_at** / **expires_in_hours** (default **168h** if omitted), optional **max_uses**, optional bound **event_id**, optional **label**. Successful arrivals increment **use_count** (failed checks do not).
+
+Unexpected guests: `POST /api/access/approve`, `POST /api/access/reject`.
 
 **Deploy:** set `GUEST_ACCESS_APP_BASE_URL` (SPA origin, no trailing slash). Optional `GUEST_ACCESS_PERMISSION_MAX_PER_MINUTE` (default 60) limits anonymous arrivals per client IP. See **Testing** below for manual checks.
 

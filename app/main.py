@@ -102,9 +102,10 @@ OPENAPI_TAGS = [
         "description": (
             "Public guest entry for **zone QR scans** (no JWT): `POST /api/access/permission`, "
             "`GET /api/access/session/{guest_id}` (poll). "
-            "**Administrators** fetch printable links via `GET /api/access/qr-link` and optional "
-            "`GET /api/access/qr.png`; approve/reject with `POST /api/access/approve|reject` (Bearer JWT). "
-            "Encode SPA **`/access?zid=`** (optional **`eid=`**) — never member-invite tokens from `/utils/qr/generate`."
+            "**Administrators** mint DB-backed tokens (`POST /api/access/qr-tokens`, SPA **`/access?gt=`**) "
+            "or static links (`GET /api/access/qr-link`, **`/access?zid=`**); optional server PNG QR. "
+            "Approve/reject: `POST /api/access/approve|reject` (Bearer JWT). "
+            "Not member-invite (`/utils/qr/generate`)."
         ),
     },
 ]
@@ -124,9 +125,9 @@ app = FastAPI(
         "- User registration: account + optional Zone #2/#3 + schedule access + request access "
         "(no registration code required).\n"
         "- Login: email/username and password authentication.\n"
-        "- **QR guest access (no login):** SPA route **`/access?zid=<zone_id>`** (optional **`eid`**); "
-        "guest submits name → `POST /api/access/permission` (see tag **access**). "
-        "Administrators obtain the canonical URL with **`GET /api/access/qr-link`** (Bearer JWT). "
+        "- **QR guest access (no login):** SPA **`/access?zid=`** or **`/access?gt=`** (issued token); "
+        "guest submits name → `POST /api/access/permission`. "
+        "Administrators mint tokens with **`POST /api/access/qr-tokens`** or static **`GET /api/access/qr-link`**. "
         "Members create expectations via `/message-feature/access/schedules`; unexpected visits notify "
         "via WebSocket `unexpected_guest` / `guest_is_here`. "
         "**Member invite QR** is separate: `POST /utils/qr/generate`."

@@ -349,6 +349,17 @@ def init_db():
                 )
             )
 
+            conn.execute(
+                text(
+                    "ALTER TABLE guest_access_sessions ADD COLUMN IF NOT EXISTS qr_token_id INTEGER;"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_guest_access_sessions_qr_token_id ON guest_access_sessions (qr_token_id);"
+                )
+            )
+
 
 def drop_db():
     """Drop all database tables."""

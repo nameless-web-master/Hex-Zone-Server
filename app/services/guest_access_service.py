@@ -90,6 +90,7 @@ def process_guest_arrival(
     device_id: str | None,
     latitude: float | None,
     longitude: float | None,
+    qr_token_db_id: int | None = None,
 ) -> dict:
     """Persist guest session, permission event, return HTTP-facing payload + websocket targets."""
     if not zone_exists(db, zone_id):
@@ -114,6 +115,7 @@ def process_guest_arrival(
             resolution=None,
             schedule_id=schedule.id,
             admin_owner_id=None,
+            qr_token_id=qr_token_db_id,
         )
         db.add(session_row)
         db.flush()
@@ -162,6 +164,7 @@ def process_guest_arrival(
             "guest_id": guest_token,
             "schedule_match": True,
             "websocket_events": [{"name": "guest_is_here", "targets": "schedule_owner_and_optional_assist"}],
+            **({"guest_access_qr_token_db_id": qr_token_db_id} if qr_token_db_id is not None else {}),
         }
         decision = "EXPECTED"
         msg_guest = "You are expected. Please proceed."
@@ -182,6 +185,7 @@ def process_guest_arrival(
             resolution="pending",
             schedule_id=None,
             admin_owner_id=admin.id,
+            qr_token_id=qr_token_db_id,
         )
         db.add(session_row)
         db.flush()
@@ -225,6 +229,7 @@ def process_guest_arrival(
             "schedule_match": False,
             "websocket_events": [{"name": "unexpected_guest", "targets": "zone_members"}],
             "chat_anchor_event_id": chat_event.id,
+            **({"guest_access_qr_token_db_id": qr_token_db_id} if qr_token_db_id is not None else {}),
         }
         decision = "UNEXPECTED"
         msg_guest = "You are not scheduled. Please wait for approval."
@@ -274,6 +279,7 @@ def serialize_guest_session_row(row: GuestAccessSession) -> dict:
         "resolution": row.resolution,
         "schedule_id": row.schedule_id,
         "admin_owner_id": row.admin_owner_id,
+        "qr_token_id": row.qr_token_id,
         "latitude": row.latitude,
         "longitude": row.longitude,
         "created_at": row.created_at,

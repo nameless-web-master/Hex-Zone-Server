@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+MAX_GUEST_QR_TOKEN_TTL_HOURS = 24 * 365
 
 
 class GuestArrivalLocation(BaseModel):
@@ -16,7 +18,18 @@ class GuestArrivalLocation(BaseModel):
 class GuestArrivalRequest(BaseModel):
     """Payload when a guest scans the zone QR (no JWT). Matches zone + schedule rules server-side."""
 
-    zone_id: str = Field(..., min_length=1, max_length=100, description="Zone id from QR (`?zid=`).")
+    zone_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Zone id from static QR (`?zid=`). Omit when **guest_qr_token** is sent.",
+    )
+    guest_qr_token: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=96,
+        description="Opaque token from backend QR (`?gt=`). Resolves zone (and optional event binding).",
+    )
     guest_name: str = Field(..., min_length=1, max_length=255, description="Name entered by guest.")
     event_id: str | None = Field(
         default=None,
@@ -25,6 +38,14 @@ class GuestArrivalRequest(BaseModel):
     )
     device_id: str | None = Field(default=None, max_length=255, description="Optional client device fingerprint.")
     location: GuestArrivalLocation | None = Field(default=None, description="Optional coordinates.")
+
+    @model_validator(mode="after")
+    def require_zone_or_guest_token(self):
+        zid = (self.zone_id or "").strip()
+        gt = (self.guest_qr_token or "").strip()
+        if not zid and not gt:
+            raise ValueError("Provide zone_id (static QR) and/or guest_qr_token (issued QR).")
+        return self
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -35,7 +56,12 @@ class GuestArrivalRequest(BaseModel):
                     "event_id": "EVT-optional",
                     "device_id": "ios-abc",
                     "location": {"lat": 40.7128, "lng": -74.006},
-                }
+                },
+                {
+                    "guest_qr_token": "AbCdEf1234567890abcdefghijklmnopQRtoken",
+                    "guest_name": "Walk-in",
+                    "event_id": "EVT-optional",
+                },
             ]
         }
     )
@@ -111,6 +137,7 @@ class GuestAccessSessionListItem(BaseModel):
     id: int
     guest_id: str
     zone_id: str
+    qr_token_id: int | None = Field(default=None, description="Set when arrival used a stored guest QR token.")
     guest_name: str
     event_id: str | None = None
     device_id: str | None = None
@@ -154,6 +181,61 @@ class GuestAccessQrLinkResponse(BaseModel):
             ]
         }
     )
+
+
+class GuestQrTokenCreate(BaseModel):
+    """Mint a time-bound guest QR link (`?gt=`). Administrator JWT required."""
+
+    zone_id: str = Field(..., min_length=1, max_length=100)
+    expires_in_hours: float | None = Field(
+        default=None,
+        ge=1,
+        le=float(MAX_GUEST_QR_TOKEN_TTL_HOURS),
+        description=f"If set (without expires_at), TTL from now. Max {MAX_GUEST_QR_TOKEN_TTL_HOURS}h.",
+    )
+    expires_at: datetime | None = Field(default=None, description="Absolute expiry (UTC naive or ISO).")
+    event_id: str | None = Field(default=None, max_length=100, description="Bind arrivals to this event id.")
+    label: str | None = Field(default=None, max_length=255, description="Dashboard label.")
+    max_uses: int | None = Field(default=None, ge=1, description="Cap successful arrivals; omit for unlimited.")
+
+    @model_validator(mode="after")
+    def expires_exclusive(self):
+        if self.expires_at is not None and self.expires_in_hours is not None:
+            raise ValueError("Provide either expires_at or expires_in_hours, not both.")
+        return self
+
+
+class GuestQrTokenListItem(BaseModel):
+    """Stored guest QR metadata (never includes full secret after creation)."""
+
+    id: int
+    zone_id: str
+    event_id: str | None = None
+    label: str | None = None
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    max_uses: int | None = None
+    use_count: int = 0
+    created_at: datetime
+    last_used_at: datetime | None = None
+    created_by_owner_id: int
+    token_suffix: str = Field(description="Last characters of token for display.")
+
+
+class GuestQrTokenCreatedResponse(GuestQrTokenListItem):
+    """Returned once when minting; includes secret **token** for QR encoding."""
+
+    token: str = Field(description="Embed as SPA query **gt**. Not stored in list APIs.")
+    url: str | None = Field(description="Absolute URL when web base env is configured.")
+    path_with_query: str = Field(description="e.g. `/access?gt=…`")
+
+
+class GuestQrTokenLinkBundle(BaseModel):
+    """Resolved URL for an existing stored token (admin); secret never appears in list APIs."""
+
+    id: int
+    url: str | None = None
+    path_with_query: str
 
 
 class GuestSessionPollResponse(BaseModel):
