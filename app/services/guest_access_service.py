@@ -260,6 +260,41 @@ def process_guest_arrival(
     }
 
 
+def serialize_guest_session_row(row: GuestAccessSession) -> dict:
+    """Member/API list shape for dashboard polling."""
+    base = guest_session_public_view(row)
+    return {
+        "id": row.id,
+        "guest_id": row.guest_id,
+        "zone_id": row.zone_id,
+        "guest_name": row.guest_name,
+        "event_id": row.event_id,
+        "device_id": row.device_id,
+        "kind": row.kind,
+        "resolution": row.resolution,
+        "schedule_id": row.schedule_id,
+        "admin_owner_id": row.admin_owner_id,
+        "latitude": row.latitude,
+        "longitude": row.longitude,
+        "created_at": row.created_at,
+        "guest_status": base["status"],
+    }
+
+
+def list_guest_sessions_for_zone(
+    db: Session,
+    *,
+    zone_id: str,
+    limit: int = 50,
+    pending_only: bool = False,
+) -> list[GuestAccessSession]:
+    lim = max(1, min(int(limit), 200))
+    q = db.query(GuestAccessSession).filter(GuestAccessSession.zone_id == zone_id.strip())
+    if pending_only:
+        q = q.filter(GuestAccessSession.kind == "unexpected", GuestAccessSession.resolution == "pending")
+    return q.order_by(GuestAccessSession.created_at.desc()).limit(lim).all()
+
+
 def guest_session_public_view(row: GuestAccessSession) -> dict:
     if row.kind == "expected":
         status = "EXPECTED"

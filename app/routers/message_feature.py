@@ -8,6 +8,7 @@ from app.core.security import get_current_user
 from app.crud import owner as owner_crud
 from app.database import get_db
 from app.models import AccessSchedule, MessageBlock, ZoneMessageEvent
+from app.schemas.access_guest import GuestAccessSessionListItem
 from app.schemas.message_feature import (
     AccessScheduleCreate,
     AccessScheduleResponse,
@@ -17,7 +18,7 @@ from app.schemas.message_feature import (
     PropagationMessageCreate,
     PropagationMessageResponse,
 )
-from app.services import message_feature_service, permission_service
+from app.services import guest_access_service, message_feature_service, permission_service
 from app.services.zone_membership_service import refresh_owner_memberships
 from app.websocket.manager import ws_manager
 
@@ -222,6 +223,51 @@ async def list_access_schedules(
     if zone_id:
         query = query.filter(AccessSchedule.zone_id == zone_id)
     return query.order_by(AccessSchedule.created_at.desc()).all()
+
+
+@router.get(
+    "/access/guest-requests",
+    response_model=list[GuestAccessSessionListItem],
+    summary="List QR guest arrival sessions",
+    description=(
+        "Returns recent **`guest_access_sessions`** for **zone_id**. Caller must belong to that zone "
+        "(**owner.zone_id** match). Use **`pending_only=true`** to list unexpected visitors awaiting "
+        "approve/reject. Pair with **`POST /api/access/approve`** and **`POST /api/access/reject`**."
+    ),
+    response_description="Newest arrivals first.",
+)
+async def list_guest_requests(
+    zone_id: str = Query(..., min_length=1, max_length=100, description="Hex zone id from QR / dashboard."),
+    pending_only: bool = Query(
+        False,
+        description="If true, only unexpected sessions still in **pending** resolution.",
+    ),
+    limit: int = Query(50, ge=1, le=200, description="Max rows (most recent first)."),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    viewer = owner_crud.get_owner(db, current_user["user_id"])
+    if not viewer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Owner not found")
+    zid = zone_id.strip()
+    if viewer.zone_id != zid:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error_code": "FORBIDDEN",
+                "message": "You may only list guest requests for your own zone.",
+            },
+        )
+    rows = guest_access_service.list_guest_sessions_for_zone(
+        db,
+        zone_id=zid,
+        limit=limit,
+        pending_only=pending_only,
+    )
+    return [
+        GuestAccessSessionListItem.model_validate(guest_access_service.serialize_guest_session_row(r))
+        for r in rows
+    ]
 
 
 @router.get("/messages/new")

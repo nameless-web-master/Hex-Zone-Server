@@ -1,5 +1,6 @@
 """OpenAPI schemas for public QR guest access (`/api/access/*`)."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -101,6 +102,27 @@ class GuestAdminDecisionResponse(BaseModel):
                 {"status": "APPROVED", "message": "Guest access approved.", "guest_id": "550e8400-e29b-41d4-a716-446655440000"}
             ]
         }
+    )
+
+
+class GuestAccessSessionListItem(BaseModel):
+    """One QR arrival session returned to authenticated zone members."""
+
+    id: int
+    guest_id: str
+    zone_id: str
+    guest_name: str
+    event_id: str | None = None
+    device_id: str | None = None
+    kind: str = Field(description="expected | unexpected")
+    resolution: str | None = Field(description="pending | approved | rejected; null for expected arrivals.")
+    schedule_id: int | None = None
+    admin_owner_id: int | None = Field(description="Anchor admin for unexpected chat thread when set.")
+    latitude: float | None = None
+    longitude: float | None = None
+    created_at: datetime
+    guest_status: Literal["EXPECTED", "UNEXPECTED", "APPROVED", "REJECTED"] = Field(
+        description="Derived guest-facing status (matches GET /api/access/session/{guest_id})."
     )
 
 

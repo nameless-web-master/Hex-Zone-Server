@@ -83,8 +83,9 @@ OPENAPI_TAGS = [
     {
         "name": "message-feature",
         "description": (
-            "Authenticated geo propagation, message blocking, **access schedules** (`/message-feature/access/schedules`), "
-            "and **PERMISSION** propagation for logged-in devices (`/message-feature/access/permission`). "
+        "Authenticated geo propagation, message blocking, **access schedules** (`/message-feature/access/schedules`), "
+        "**guest arrival history** (`GET /message-feature/access/guest-requests`), "
+        "and **PERMISSION** propagation for logged-in devices (`/message-feature/access/permission`). "
             "Public QR guests without JWT use **`access`** (`POST /api/access/permission`)."
         ),
     },
