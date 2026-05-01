@@ -1,0 +1,352 @@
+"""QR guest arrival: zone validation, schedule match, sessions, notifications."""
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from app.domain.message_types import CanonicalMessageType, type_category, type_scope
+from app.models import AccessSchedule, GuestAccessSession, Owner, Zone, ZoneMessageEvent
+from app.models.owner import OwnerRole
+
+
+def zone_exists(db: Session, zone_id: str) -> bool:
+    z = db.query(Zone.id).filter(Zone.zone_id == zone_id, Zone.active.is_(True)).first()
+    if z:
+        return True
+    return (
+        db.query(Owner.id)
+        .filter(Owner.zone_id == zone_id, Owner.active.is_(True))
+        .first()
+        is not None
+    )
+
+
+def resolve_primary_zone_admin_owner(db: Session, zone_id: str) -> Owner | None:
+    z = (
+        db.query(Zone)
+        .filter(Zone.zone_id == zone_id, Zone.active.is_(True))
+        .order_by(Zone.id.asc())
+        .first()
+    )
+    if z:
+        owner = db.get(Owner, z.owner_id)
+        if owner and owner.active:
+            return owner
+    return (
+        db.query(Owner)
+        .filter(
+            Owner.zone_id == zone_id,
+            Owner.role == OwnerRole.ADMINISTRATOR,
+            Owner.active.is_(True),
+        )
+        .order_by(Owner.id.asc())
+        .first()
+    )
+
+
+def find_matching_schedule_for_arrival(
+    db: Session,
+    zone_id: str,
+    *,
+    guest_name: str,
+    event_id: str | None,
+) -> AccessSchedule | None:
+    """Schedule match: zone + time window + (event_id match OR guest_name match)."""
+    gn = guest_name.strip()
+    ev = (event_id or "").strip()
+    conditions = []
+    if gn:
+        conditions.append(AccessSchedule.guest_name == gn)
+    if ev:
+        conditions.append(AccessSchedule.event_id == ev)
+    if not conditions:
+        return None
+
+    now = datetime.utcnow()
+    q = db.query(AccessSchedule).filter(
+        AccessSchedule.zone_id == zone_id,
+        AccessSchedule.active.is_(True),
+        or_(AccessSchedule.starts_at.is_(None), AccessSchedule.starts_at <= now),
+        or_(AccessSchedule.ends_at.is_(None), AccessSchedule.ends_at >= now),
+        or_(*conditions),
+    )
+    return q.order_by(AccessSchedule.created_at.desc()).first()
+
+
+def zone_member_owner_ids(db: Session, zone_id: str) -> list[int]:
+    rows = db.query(Owner.id).filter(Owner.zone_id == zone_id, Owner.active.is_(True)).all()
+    return [row[0] for row in rows]
+
+
+def process_guest_arrival(
+    db: Session,
+    *,
+    zone_id: str,
+    guest_name: str,
+    event_id: str | None,
+    device_id: str | None,
+    latitude: float | None,
+    longitude: float | None,
+) -> dict:
+    """Persist guest session, permission event, return HTTP-facing payload + websocket targets."""
+    if not zone_exists(db, zone_id):
+        return {"error": "INVALID_ZONE", "message": "Unknown or inactive zone.", "http_status": 404}
+
+    schedule = find_matching_schedule_for_arrival(db, zone_id, guest_name=guest_name, event_id=event_id)
+    guest_token = str(uuid.uuid4())
+
+    ws_guest_is_here: list[tuple[list[int], dict]] = []
+    ws_unexpected: list[tuple[list[int], dict]] = []
+
+    if schedule:
+        session_row = GuestAccessSession(
+            guest_id=guest_token,
+            zone_id=zone_id,
+            guest_name=guest_name.strip(),
+            event_id=(event_id or "").strip() or None,
+            device_id=(device_id or "").strip() or None,
+            latitude=latitude,
+            longitude=longitude,
+            kind="expected",
+            resolution=None,
+            schedule_id=schedule.id,
+            admin_owner_id=None,
+        )
+        db.add(session_row)
+        db.flush()
+
+        notify_ids: list[int] = []
+        if schedule.created_by_owner_id:
+            notify_ids.append(schedule.created_by_owner_id)
+        else:
+            notify_ids = [
+                row[0]
+                for row in db.query(Owner.id)
+                .filter(
+                    Owner.zone_id == zone_id,
+                    Owner.role == OwnerRole.ADMINISTRATOR,
+                    Owner.active.is_(True),
+                )
+                .all()
+            ]
+
+        if schedule.notify_member_assist:
+            admin_rows = (
+                db.query(Owner.id)
+                .filter(
+                    Owner.zone_id == zone_id,
+                    Owner.role == OwnerRole.ADMINISTRATOR,
+                    Owner.active.is_(True),
+                )
+                .all()
+            )
+            for aid in (row[0] for row in admin_rows):
+                if aid not in notify_ids:
+                    notify_ids.append(aid)
+
+        payload_here = {
+            "type": "guest_is_here",
+            "guest_name": guest_name.strip(),
+            "zone_id": zone_id,
+            "guest_id": guest_token,
+            "event_id": (event_id or "").strip() or None,
+        }
+        if notify_ids:
+            ws_guest_is_here.append((notify_ids, payload_here))
+
+        perm_meta = {
+            "flow": "qr_guest_arrival",
+            "guest_id": guest_token,
+            "schedule_match": True,
+            "websocket_events": [{"name": "guest_is_here", "targets": "schedule_owner_and_optional_assist"}],
+        }
+        decision = "EXPECTED"
+        msg_guest = "You are expected. Please proceed."
+    else:
+        admin = resolve_primary_zone_admin_owner(db, zone_id)
+        if not admin:
+            return {"error": "NO_ZONE_ADMIN", "message": "No administrator found for this zone.", "http_status": 422}
+
+        session_row = GuestAccessSession(
+            guest_id=guest_token,
+            zone_id=zone_id,
+            guest_name=guest_name.strip(),
+            event_id=(event_id or "").strip() or None,
+            device_id=(device_id or "").strip() or None,
+            latitude=latitude,
+            longitude=longitude,
+            kind="unexpected",
+            resolution="pending",
+            schedule_id=None,
+            admin_owner_id=admin.id,
+        )
+        db.add(session_row)
+        db.flush()
+
+        broadcast_ids = zone_member_owner_ids(db, zone_id)
+        ws_unexpected.append(
+            (
+                broadcast_ids,
+                {
+                    "type": "unexpected_guest",
+                    "guest_name": guest_name.strip(),
+                    "zone_id": zone_id,
+                    "guest_id": guest_token,
+                },
+            )
+        )
+
+        chat_event = ZoneMessageEvent(
+            zone_id=zone_id,
+            sender_id=admin.id,
+            type=CanonicalMessageType.CHAT.value,
+            category=type_category(CanonicalMessageType.CHAT),
+            scope=type_scope(CanonicalMessageType.CHAT),
+            text=f"Guest chat: {guest_name.strip()}",
+            body_json={
+                "guest_id": guest_token,
+                "guest_name": guest_name.strip(),
+                "zone_id": zone_id,
+                "role": "guest_admin_thread",
+            },
+            metadata_json={
+                "guest_access_session_db_id": session_row.id,
+                "admin_owner_id": admin.id,
+            },
+        )
+        db.add(chat_event)
+
+        perm_meta = {
+            "flow": "qr_guest_arrival",
+            "guest_id": guest_token,
+            "schedule_match": False,
+            "websocket_events": [{"name": "unexpected_guest", "targets": "zone_members"}],
+            "chat_anchor_event_id": chat_event.id,
+        }
+        decision = "UNEXPECTED"
+        msg_guest = "You are not scheduled. Please wait for approval."
+
+    perm_event = ZoneMessageEvent(
+        zone_id=zone_id,
+        sender_id=None,
+        type=CanonicalMessageType.PERMISSION.value,
+        category=type_category(CanonicalMessageType.PERMISSION),
+        scope=type_scope(CanonicalMessageType.PERMISSION),
+        text=msg_guest,
+        body_json={
+            "guest_name": guest_name.strip(),
+            "zone_id": zone_id,
+            "guest_id": guest_token,
+            "event_id": (event_id or "").strip() or None,
+            "device_id": (device_id or "").strip() or None,
+            "location": {"lat": latitude, "lng": longitude},
+        },
+        metadata_json=perm_meta,
+    )
+    db.add(perm_event)
+    db.flush()
+
+    return {
+        "guest_response": {
+            "status": decision,
+            "message": msg_guest,
+            "guest_id": guest_token,
+        },
+        "ws_guest_is_here": ws_guest_is_here,
+        "ws_unexpected_guest": ws_unexpected,
+    }
+
+
+def guest_session_public_view(row: GuestAccessSession) -> dict:
+    if row.kind == "expected":
+        status = "EXPECTED"
+        message = "You are expected. Please proceed."
+    elif row.resolution == "approved":
+        status = "APPROVED"
+        message = "Your visit has been approved. Welcome."
+    elif row.resolution == "rejected":
+        status = "REJECTED"
+        message = "Access was not approved."
+    else:
+        status = "UNEXPECTED"
+        message = "You are not scheduled. Please wait for approval."
+    return {"guest_id": row.guest_id, "zone_id": row.zone_id, "status": status, "message": message}
+
+
+def approve_guest(db: Session, *, acting_owner: Owner, zone_id: str, guest_id: str) -> dict:
+    if acting_owner.zone_id != zone_id or acting_owner.role != OwnerRole.ADMINISTRATOR:
+        return {"error": "FORBIDDEN", "message": "Administrator action required for this zone.", "http_status": 403}
+
+    row = (
+        db.query(GuestAccessSession)
+        .filter(
+            GuestAccessSession.guest_id == guest_id,
+            GuestAccessSession.zone_id == zone_id,
+        )
+        .first()
+    )
+    if not row:
+        return {"error": "NOT_FOUND", "message": "Guest session not found.", "http_status": 404}
+    if row.kind != "unexpected":
+        return {"error": "INVALID_STATE", "message": "Guest does not require approval.", "http_status": 422}
+    if row.resolution != "pending":
+        return {"error": "INVALID_STATE", "message": "Guest session already resolved.", "http_status": 422}
+
+    row.resolution = "approved"
+    db.flush()
+
+    note = ZoneMessageEvent(
+        zone_id=zone_id,
+        sender_id=acting_owner.id,
+        type=CanonicalMessageType.PERMISSION.value,
+        category=type_category(CanonicalMessageType.PERMISSION),
+        scope=type_scope(CanonicalMessageType.PERMISSION),
+        text="Guest access approved.",
+        body_json={"guest_id": guest_id, "zone_id": zone_id, "resolution": "APPROVED"},
+        metadata_json={"flow": "guest_access_approve"},
+    )
+    db.add(note)
+    db.flush()
+
+    return {"ok": True, "guest_response": {"status": "APPROVED", "message": note.text, "guest_id": guest_id}}
+
+
+def reject_guest(db: Session, *, acting_owner: Owner, zone_id: str, guest_id: str) -> dict:
+    if acting_owner.zone_id != zone_id or acting_owner.role != OwnerRole.ADMINISTRATOR:
+        return {"error": "FORBIDDEN", "message": "Administrator action required for this zone.", "http_status": 403}
+
+    row = (
+        db.query(GuestAccessSession)
+        .filter(
+            GuestAccessSession.guest_id == guest_id,
+            GuestAccessSession.zone_id == zone_id,
+        )
+        .first()
+    )
+    if not row:
+        return {"error": "NOT_FOUND", "message": "Guest session not found.", "http_status": 404}
+    if row.kind != "unexpected":
+        return {"error": "INVALID_STATE", "message": "Guest does not require approval.", "http_status": 422}
+    if row.resolution != "pending":
+        return {"error": "INVALID_STATE", "message": "Guest session already resolved.", "http_status": 422}
+
+    row.resolution = "rejected"
+    db.flush()
+
+    note = ZoneMessageEvent(
+        zone_id=zone_id,
+        sender_id=acting_owner.id,
+        type=CanonicalMessageType.PERMISSION.value,
+        category=type_category(CanonicalMessageType.PERMISSION),
+        scope=type_scope(CanonicalMessageType.PERMISSION),
+        text="Guest access rejected.",
+        body_json={"guest_id": guest_id, "zone_id": zone_id, "resolution": "REJECTED"},
+        metadata_json={"flow": "guest_access_reject"},
+    )
+    db.add(note)
+    db.flush()
+
+    return {"ok": True, "guest_response": {"status": "REJECTED", "message": note.text, "guest_id": guest_id}}

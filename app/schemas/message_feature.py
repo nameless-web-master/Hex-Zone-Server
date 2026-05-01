@@ -27,9 +27,15 @@ class CoordinatePayload(BaseModel):
 
 class PropagationMessageCreate(BaseModel):
     type: MessageFeatureType
-    hid: str = Field(..., min_length=1, max_length=255)
-    tt: datetime = Field(default_factory=datetime.utcnow)
-    msg: dict = Field(default_factory=dict)
+    hid: str = Field(..., min_length=1, max_length=255, description="Device / session handle.")
+    tt: datetime = Field(default_factory=datetime.utcnow, description="Message time (UTC).")
+    msg: dict = Field(
+        default_factory=dict,
+        description=(
+            "Type-specific payload. For **PERMISSION**, include keys such as `guest_name`, "
+            "`guest_id`, and `event_id` for schedule matching."
+        ),
+    )
     position: CoordinatePayload
     city: str | None = Field(default=None, max_length=120)
     province: str | None = Field(default=None, max_length=120)
@@ -72,13 +78,20 @@ class BlockRuleResponse(BaseModel):
 
 
 class AccessScheduleCreate(BaseModel):
-    zone_id: str = Field(..., min_length=1, max_length=100)
-    event_id: str | None = Field(default=None, max_length=100)
-    guest_id: str | None = Field(default=None, max_length=100)
-    guest_name: str | None = Field(default=None, max_length=255)
-    starts_at: datetime | None = None
-    ends_at: datetime | None = None
-    notify_member_assist: bool = False
+    zone_id: str = Field(..., min_length=1, max_length=100, description="Target zone id (matches QR / owner zone).")
+    event_id: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Optional event id matched on guest arrival together with guest_name.",
+    )
+    guest_id: str | None = Field(default=None, max_length=100, description="Optional pre-provisioned guest id.")
+    guest_name: str | None = Field(default=None, max_length=255, description="Expected guest display name.")
+    starts_at: datetime | None = Field(default=None, description="Window start (UTC); null means open-ended past.")
+    ends_at: datetime | None = Field(default=None, description="Window end (UTC); null means open-ended future.")
+    notify_member_assist: bool = Field(
+        default=False,
+        description="When true, zone administrators also receive assist notifications for this schedule.",
+    )
 
 
 class AccessScheduleResponse(BaseModel):
@@ -98,11 +111,11 @@ class AccessScheduleResponse(BaseModel):
 
 
 class PermissionDecisionResponse(BaseModel):
-    decision: str
-    schedule_match: bool
-    sender_message: dict
-    member_message: dict
-    delivered_owner_ids: list[int]
+    decision: str = Field(description="EXPECTED_GUEST or NOT_EXPECTED_GUEST.")
+    schedule_match: bool = Field(description="True when an active schedule matched the incoming payload.")
+    sender_message: dict = Field(description="Short codes/text for the requesting client.")
+    member_message: dict = Field(description="Short codes/text for notified members.")
+    delivered_owner_ids: list[int] = Field(description="Owner ids receiving downstream WebSocket PERMISSION_MESSAGE.")
 
 
 class PropagationMessageResponse(BaseModel):

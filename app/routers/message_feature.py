@@ -179,7 +179,18 @@ async def delete_block_rule(
     db.commit()
 
 
-@router.post("/access/schedules", response_model=AccessScheduleResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/access/schedules",
+    response_model=AccessScheduleResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create access schedule",
+    description=(
+        "Authenticated member defines an expected visitor window for a **zone_id**. "
+        "Used by matching logic in `POST /api/access/permission` (QR guests) and by "
+        "`process_permission_message` for device-originated PERMISSION messages."
+    ),
+    response_description="Persisted schedule including audit fields.",
+)
 async def create_access_schedule(
     payload: AccessScheduleCreate,
     current_user: dict = Depends(get_current_user),
@@ -194,9 +205,15 @@ async def create_access_schedule(
     return schedule
 
 
-@router.get("/access/schedules", response_model=list[AccessScheduleResponse])
+@router.get(
+    "/access/schedules",
+    response_model=list[AccessScheduleResponse],
+    summary="List access schedules",
+    description="Returns active schedules, optionally filtered by **zone_id**.",
+    response_description="Newest-first list of schedule rows.",
+)
 async def list_access_schedules(
-    zone_id: str | None = Query(default=None),
+    zone_id: str | None = Query(default=None, description="If set, restrict to this zone id."),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -241,7 +258,18 @@ async def list_new_feature_messages(
     ]
 
 
-@router.post("/access/permission", response_model=PermissionDecisionResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/access/permission",
+    response_model=PermissionDecisionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Process PERMISSION propagation (authenticated)",
+    description=(
+        "Requires JWT. **type** must be `PERMISSION`. Evaluates schedules for **payload.to** "
+        "(or sender zone), emits `ZoneMessageEvent`, and broadcasts **`PERMISSION_MESSAGE`** "
+        "to `delivered_owner_ids`. Public QR scans without login should call **`POST /api/access/permission`** instead."
+    ),
+    response_description="Decision bundle plus websocket fan-out targets.",
+)
 async def process_permission(
     payload: PropagationMessageCreate,
     current_user: dict = Depends(get_current_user),

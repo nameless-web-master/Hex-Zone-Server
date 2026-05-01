@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.database import init_db
-from app.routers import owners, devices, zones, utils, messages, message_feature
+from app.routers import access, owners, devices, zones, utils, messages, message_feature
 from app.routes.contract_routes import router as contract_router
 from app.utils.api_response import error_response
 from app.websocket.routes import router as websocket_router
@@ -81,10 +81,26 @@ OPENAPI_TAGS = [
         ),
     },
     {
+        "name": "message-feature",
+        "description": (
+            "Authenticated geo propagation, message blocking, **access schedules** (`/message-feature/access/schedules`), "
+            "and **PERMISSION** propagation for logged-in devices (`/message-feature/access/permission`). "
+            "Public QR guests without JWT use **`access`** (`POST /api/access/permission`)."
+        ),
+    },
+    {
         "name": "contract",
         "description": (
             "Mobile app contract routes aligned to setup wizard flows (register, zone "
             "setup, schedule access, request access, and notifications)."
+        ),
+    },
+    {
+        "name": "access",
+        "description": (
+            "Public guest entry for **zone QR scans** (no JWT): `POST /api/access/permission`, "
+            "`GET /api/access/session/{guest_id}` (poll), `POST /api/access/approve`, `POST /api/access/reject` "
+            "(admin bearer). Server may push `guest_is_here` or `unexpected_guest` over member WebSockets."
         ),
     },
 ]
@@ -103,7 +119,10 @@ app = FastAPI(
         "The tier code FREE is also accepted for administrators without calling GET (stateless).\n"
         "- User registration: account + optional Zone #2/#3 + schedule access + request access "
         "(no registration code required).\n"
-        "- Login: email/username and password authentication."
+        "- Login: email/username and password authentication.\n"
+        "- **QR guest access (no login):** `POST /api/access/permission` with `zone_id` from the QR URL "
+        "(see tag **access**). Members create expectations via `/message-feature/access/schedules`; "
+        "unexpected visits notify the zone via WebSocket events `unexpected_guest` / `guest_is_here`."
     ),
     version=settings.API_VERSION,
     lifespan=lifespan,
@@ -156,6 +175,7 @@ app.include_router(zones.router)
 app.include_router(messages.router)
 app.include_router(utils.router)
 app.include_router(message_feature.router)
+app.include_router(access.router)
 app.include_router(contract_router)
 app.include_router(websocket_router)
 
