@@ -56,6 +56,13 @@ def init_db():
             conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_scope ON messages (scope);"))
             conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
+            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS receiver_id INTEGER;"))
+            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS category VARCHAR(16);"))
+            conn.execute(
+                text(
+                    "ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS body JSONB DEFAULT '{}'::jsonb;"
+                )
+            )
             conn.execute(
                 text(
                     "ALTER TABLE guest_access_sessions ADD COLUMN IF NOT EXISTS qr_token_id INTEGER;"
@@ -116,10 +123,6 @@ def init_db():
                 )
             except Exception as exc:
                 logger.warning("Skipping legacy visibility backfill: %s", exc)
-            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS receiver_id INTEGER;"))
-            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS category VARCHAR(16);"))
-            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
-            conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS body JSONB DEFAULT '{}'::jsonb;"))
             conn.execute(
                 text(
                     """
