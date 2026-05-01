@@ -8,7 +8,11 @@ from app.core.security import get_current_user
 from app.crud import owner as owner_crud
 from app.database import get_db
 from app.models import AccessSchedule, MessageBlock, ZoneMessageEvent
-from app.schemas.access_guest import GuestAccessSessionListItem
+from app.schemas.access_guest import (
+    GuestAccessHttpError,
+    GuestAccessSessionListItem,
+    GuestAdminDecisionResponse,
+)
 from app.schemas.message_feature import (
     AccessScheduleCreate,
     AccessScheduleResponse,
@@ -232,7 +236,8 @@ async def list_access_schedules(
     description=(
         "Returns recent **`guest_access_sessions`** for **zone_id**. Caller must belong to that zone "
         "(**owner.zone_id** match). Use **`pending_only=true`** to list unexpected visitors awaiting "
-        "approve/reject. Pair with **`POST /api/access/approve`** and **`POST /api/access/reject`**."
+        "approve/reject. Use **`POST .../guest-requests/{guest_id}/approve|reject?zone_id=`** "
+        "or **`POST /api/access/approve|reject`** with JSON body (**zone_id**, **guest_id**)."
     ),
     response_description="Newest arrivals first.",
 )
@@ -268,6 +273,100 @@ async def list_guest_requests(
         GuestAccessSessionListItem.model_validate(guest_access_service.serialize_guest_session_row(r))
         for r in rows
     ]
+
+
+def _guest_action_zone_query(
+    zone_id: str = Query(..., min_length=1, max_length=100, description="Zone id for this guest session."),
+) -> str:
+    return zone_id.strip()
+
+
+@router.post(
+    "/access/guest-requests/{guest_id}/approve",
+    response_model=GuestAdminDecisionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Approve unexpected guest (message-feature alias)",
+    description=(
+        "Same behavior as **`POST /api/access/approve`**. **guest_id** is taken from the path; "
+        "pass **zone_id** as a query parameter (consistent with **`GET .../guest-requests`**)."
+    ),
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid bearer token."},
+        status.HTTP_403_FORBIDDEN: {"description": "Not a zone administrator.", "model": GuestAccessHttpError},
+        status.HTTP_404_NOT_FOUND: {"description": "Owner or guest session not found.", "model": GuestAccessHttpError},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Session not unexpected or already resolved.",
+            "model": GuestAccessHttpError,
+        },
+    },
+)
+async def approve_guest_request_message_feature(
+    guest_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    zone_id: str = Depends(_guest_action_zone_query),
+):
+    owner = owner_crud.get_owner(db, current_user["user_id"])
+    if not owner:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Owner not found")
+
+    result = guest_access_service.approve_guest(
+        db,
+        acting_owner=owner,
+        zone_id=zone_id,
+        guest_id=guest_id.strip(),
+    )
+    if result.get("error"):
+        raise HTTPException(
+            status_code=result["http_status"],
+            detail={"error_code": result["error"], "message": result["message"]},
+        )
+    db.commit()
+    return GuestAdminDecisionResponse.model_validate(result["guest_response"])
+
+
+@router.post(
+    "/access/guest-requests/{guest_id}/reject",
+    response_model=GuestAdminDecisionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reject unexpected guest (message-feature alias)",
+    description="Same as **`POST /api/access/reject`** with **guest_id** in the path and **zone_id** query.",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid bearer token."},
+        status.HTTP_403_FORBIDDEN: {"description": "Not a zone administrator.", "model": GuestAccessHttpError},
+        status.HTTP_404_NOT_FOUND: {"description": "Owner or guest session not found.", "model": GuestAccessHttpError},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Session not unexpected or already resolved.",
+            "model": GuestAccessHttpError,
+        },
+    },
+)
+async def reject_guest_request_message_feature(
+    guest_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    zone_id: str = Depends(_guest_action_zone_query),
+):
+    owner = owner_crud.get_owner(db, current_user["user_id"])
+    if not owner:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error_code": "NOT_FOUND", "message": "Owner not found"},
+        )
+
+    result = guest_access_service.reject_guest(
+        db,
+        acting_owner=owner,
+        zone_id=zone_id,
+        guest_id=guest_id.strip(),
+    )
+    if result.get("error"):
+        raise HTTPException(
+            status_code=result["http_status"],
+            detail={"error_code": result["error"], "message": result["message"]},
+        )
+    db.commit()
+    return GuestAdminDecisionResponse.model_validate(result["guest_response"])
 
 
 @router.get("/messages/new")
