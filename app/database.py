@@ -56,6 +56,16 @@ def init_db():
             conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_scope ON messages (scope);"))
             conn.execute(text("ALTER TABLE zone_message_events ADD COLUMN IF NOT EXISTS scope VARCHAR(16);"))
+            conn.execute(
+                text(
+                    "ALTER TABLE guest_access_sessions ADD COLUMN IF NOT EXISTS qr_token_id INTEGER;"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_guest_access_sessions_qr_token_id ON guest_access_sessions (qr_token_id);"
+                )
+            )
 
         with engine.begin() as conn:
             # Backward-compatible schema patch for older deployments missing owners.zone_id.
@@ -346,17 +356,6 @@ def init_db():
                     ALTER TABLE member_locations
                     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW();
                     """
-                )
-            )
-
-            conn.execute(
-                text(
-                    "ALTER TABLE guest_access_sessions ADD COLUMN IF NOT EXISTS qr_token_id INTEGER;"
-                )
-            )
-            conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS ix_guest_access_sessions_qr_token_id ON guest_access_sessions (qr_token_id);"
                 )
             )
 
