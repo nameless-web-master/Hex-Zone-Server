@@ -75,9 +75,10 @@ OPENAPI_TAGS = [
     {
         "name": "utilities",
         "description": (
-            "Helper endpoints for H3 conversion, QR registration flows, and public issuance of "
-            "single-use administrator registration codes (GET /utils/registration-code). "
-            "QR invitation generation is restricted to private-account administrators."
+            "Helper endpoints for H3 conversion, **member/account QR invite** (`POST /utils/qr/generate` "
+            "+ join), and public issuance of single-use administrator registration codes "
+            "(GET /utils/registration-code). "
+            "**Door / guest access** URLs live under **`access`** (`GET /api/access/qr-link`), not here."
         ),
     },
     {
@@ -100,8 +101,10 @@ OPENAPI_TAGS = [
         "name": "access",
         "description": (
             "Public guest entry for **zone QR scans** (no JWT): `POST /api/access/permission`, "
-            "`GET /api/access/session/{guest_id}` (poll), `POST /api/access/approve`, `POST /api/access/reject` "
-            "(admin bearer). Server may push `guest_is_here` or `unexpected_guest` over member WebSockets."
+            "`GET /api/access/session/{guest_id}` (poll). "
+            "**Administrators** fetch printable links via `GET /api/access/qr-link` and optional "
+            "`GET /api/access/qr.png`; approve/reject with `POST /api/access/approve|reject` (Bearer JWT). "
+            "Encode SPA **`/access?zid=`** (optional **`eid=`**) — never member-invite tokens from `/utils/qr/generate`."
         ),
     },
 ]
@@ -121,9 +124,12 @@ app = FastAPI(
         "- User registration: account + optional Zone #2/#3 + schedule access + request access "
         "(no registration code required).\n"
         "- Login: email/username and password authentication.\n"
-        "- **QR guest access (no login):** `POST /api/access/permission` with `zone_id` from the QR URL "
-        "(see tag **access**). Members create expectations via `/message-feature/access/schedules`; "
-        "unexpected visits notify the zone via WebSocket events `unexpected_guest` / `guest_is_here`."
+        "- **QR guest access (no login):** SPA route **`/access?zid=<zone_id>`** (optional **`eid`**); "
+        "guest submits name → `POST /api/access/permission` (see tag **access**). "
+        "Administrators obtain the canonical URL with **`GET /api/access/qr-link`** (Bearer JWT). "
+        "Members create expectations via `/message-feature/access/schedules`; unexpected visits notify "
+        "via WebSocket `unexpected_guest` / `guest_is_here`. "
+        "**Member invite QR** is separate: `POST /utils/qr/generate`."
     ),
     version=settings.API_VERSION,
     lifespan=lifespan,

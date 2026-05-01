@@ -1,22 +1,34 @@
 """Public QR guest access and administrator approve/reject."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from __future__ import annotations
+
+import logging
+from urllib.parse import urlparse
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.core.guest_permission_rate_limit import allow_request
 from app.core.security import get_current_user
 from app.crud import owner as owner_crud
 from app.database import get_db
 from app.models import GuestAccessSession
+from app.models.owner import Owner, OwnerRole
 from app.schemas.access_guest import (
     GuestAccessHttpError,
+    GuestAccessQrLinkResponse,
     GuestAdminDecisionResponse,
     GuestArrivalRequest,
     GuestScanResponse,
     GuestSessionPollResponse,
     GuestZoneActionRequest,
 )
-from app.services import guest_access_service
+from app.services import guest_access_qr, guest_access_service
 from app.websocket.manager import ws_manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/access", tags=["access"])
 
@@ -32,7 +44,42 @@ then:
   sharing **zone_id**, and record a CHAT-shaped zone event as an admin↔guest thread anchor.
 
 Returns **guest_id** for polling (`GET /api/access/session/{guest_id}`).
+
+Rate-limited per client IP (rolling minute). CORS: browser guests should call the API from an allowed origin (this server enables permissive CORS by default).
 """
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+def _require_guest_qr_administrator(db: Session, current_user: dict, zone_id: str) -> Owner:
+    owner = owner_crud.get_owner(db, current_user["user_id"])
+    if not owner:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Owner not found")
+    zid = zone_id.strip()
+    if owner.zone_id != zid:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error_code": "FORBIDDEN",
+                "message": "You may only request guest QR links for your own zone.",
+            },
+        )
+    if owner.role != OwnerRole.ADMINISTRATOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error_code": "FORBIDDEN",
+                "message": "Administrator role required to fetch guest access QR material.",
+            },
+        )
+    return owner
 
 
 @router.post(
@@ -54,14 +101,33 @@ Returns **guest_id** for polling (`GET /api/access/session/{guest_id}`).
             ),
             "model": GuestAccessHttpError,
         },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Too many anonymous arrivals from this client (**RATE_LIMITED**).",
+            "model": GuestAccessHttpError,
+        },
     },
 )
-async def guest_permission(payload: GuestArrivalRequest, db: Session = Depends(get_db)):
+async def guest_permission(request: Request, payload: GuestArrivalRequest, db: Session = Depends(get_db)):
+    ip_key = _client_ip(request)
+    if not allow_request(
+        f"guest_perm:{ip_key}",
+        max_events=settings.GUEST_ACCESS_PERMISSION_MAX_PER_MINUTE,
+        window_seconds=60.0,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error_code": "RATE_LIMITED",
+                "message": "Too many arrival attempts from this network. Please wait and try again.",
+            },
+        )
+
     lat = payload.location.lat if payload.location else None
     lng = payload.location.lng if payload.location else None
+    zid = payload.zone_id.strip()
     result = guest_access_service.process_guest_arrival(
         db,
-        zone_id=payload.zone_id.strip(),
+        zone_id=zid,
         guest_name=payload.guest_name,
         event_id=payload.event_id,
         device_id=payload.device_id,
@@ -69,10 +135,24 @@ async def guest_permission(payload: GuestArrivalRequest, db: Session = Depends(g
         longitude=lng,
     )
     if result.get("error"):
+        logger.info(
+            "guest_access_permission zone_id=%s outcome=error error_code=%s",
+            zid,
+            result["error"],
+        )
         raise HTTPException(
             status_code=result["http_status"],
             detail={"error_code": result["error"], "message": result["message"]},
         )
+
+    gr = result["guest_response"]
+    logger.info(
+        "guest_access_permission zone_id=%s outcome=%s guest_id=%s",
+        zid,
+        gr["status"],
+        gr["guest_id"],
+    )
+
     db.commit()
 
     for user_ids, event_payload in result.get("ws_guest_is_here") or []:
@@ -80,7 +160,101 @@ async def guest_permission(payload: GuestArrivalRequest, db: Session = Depends(g
     for user_ids, event_payload in result.get("ws_unexpected_guest") or []:
         await ws_manager.broadcast_to_users(user_ids, "unexpected_guest", event_payload)
 
-    return GuestScanResponse.model_validate(result["guest_response"])
+    return GuestScanResponse.model_validate(gr)
+
+
+@router.get(
+    "/qr-link",
+    response_model=GuestAccessQrLinkResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Canonical guest-access deep link",
+    description=(
+        "Requires **Bearer** JWT. Caller must be a **zone administrator** with **owner.zone_id** equal "
+        "to **zone_id**. Returns the stable SPA path **`/access?zid=`** (optional **`eid=`**), and an absolute "
+        "**url** when **GUEST_ACCESS_APP_BASE_URL** is configured. "
+        "This is **not** the member-invite flow (`POST /utils/qr/generate`)."
+    ),
+    response_description="URL for QR encoding (no PII in query string).",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid bearer token."},
+        status.HTTP_403_FORBIDDEN: {
+            "description": "Wrong zone or not an administrator.",
+            "model": GuestAccessHttpError,
+        },
+        status.HTTP_404_NOT_FOUND: {"description": "Authenticated owner not found."},
+    },
+)
+async def guest_access_qr_link(
+    zone_id: str = Query(..., min_length=1, max_length=100, description="Hex zone id encoded as `zid`."),
+    event_id: str | None = Query(
+        default=None,
+        max_length=100,
+        description="Optional; included as `eid` so guests are pre-associated with an event id.",
+    ),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    _ = _require_guest_qr_administrator(db, current_user, zone_id)
+    zid = zone_id.strip()
+    path = guest_access_qr.guest_access_path_with_query(zid, event_id)
+    absolute = guest_access_qr.guest_access_absolute_url(zid, event_id)
+    return GuestAccessQrLinkResponse(url=absolute, zone_id=zid, path_with_query=path)
+
+
+@router.get(
+    "/qr.png",
+    summary="PNG QR code for guest-access URL",
+    description=(
+        "Same authorization as **GET /api/access/qr-link**. Returns **image/png** bytes encoding the "
+        "same absolute URL as **qr-link**. Requires **GUEST_ACCESS_APP_BASE_URL** (or legacy **PUBLIC_WEB_APP_URL**) "
+        "so the encoded URL is absolute."
+    ),
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid bearer token."},
+        status.HTTP_403_FORBIDDEN: {"description": "Wrong zone or not an administrator.", "model": GuestAccessHttpError},
+        status.HTTP_404_NOT_FOUND: {"description": "Authenticated owner not found."},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "Web app base URL not configured (**GUEST_LINK_BASE_UNCONFIGURED**).",
+            "model": GuestAccessHttpError,
+        },
+    },
+    response_class=Response,
+)
+async def guest_access_qr_png(
+    zone_id: str = Query(..., min_length=1, max_length=100),
+    event_id: str | None = Query(default=None, max_length=100),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    _ = _require_guest_qr_administrator(db, current_user, zone_id)
+    zid = zone_id.strip()
+    url = guest_access_qr.guest_access_absolute_url(zid, event_id)
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error_code": "GUEST_LINK_BASE_UNCONFIGURED",
+                "message": "Set GUEST_ACCESS_APP_BASE_URL so the API can build an absolute guest URL for the QR image.",
+            },
+        )
+    parsed = urlparse(url)
+    if parsed.scheme not in ("https", "http"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error_code": "GUEST_LINK_BASE_INVALID",
+                "message": "GUEST_ACCESS_APP_BASE_URL must start with http:// or https://.",
+            },
+        )
+
+    png = guest_access_qr.qr_png_bytes_for_url(url)
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "private, max-age=300",
+        },
+    )
 
 
 @router.get(

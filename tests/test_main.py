@@ -18,13 +18,13 @@ def test_db():
     """Create test database session."""
     engine = create_engine(TEST_DATABASE_URL, echo=False)
     testing_session_maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
+
     # Create tables
     Base.metadata.create_all(bind=engine)
-    
+
     with testing_session_maker() as session:
         yield session
-    
+
     # Drop tables
     Base.metadata.drop_all(bind=engine)
 
@@ -32,9 +32,10 @@ def test_db():
 @pytest.fixture
 def override_get_db(test_db):
     """Override the get_db dependency."""
+
     def _override_get_db():
         yield test_db
-    
+
     app.dependency_overrides[get_db] = _override_get_db
     yield
     app.dependency_overrides.clear()

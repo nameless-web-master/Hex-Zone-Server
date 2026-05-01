@@ -90,8 +90,16 @@ Notes:
 ### Utilities (`/utils`)
 
 - `POST /utils/h3/convert` - lat/lng to H3
-- `POST /utils/qr/generate` - generate QR invite token (private accounts only)
-- `POST /utils/qr/join` - register via QR invite token
+- `POST /utils/qr/generate` - **member/account invite** token only (private administrators). Not for door guests.
+- `POST /utils/qr/join` - register via that invite token
+
+### Guest access (`/api/access`)
+
+Door guests (no JWT): `POST /api/access/permission`, poll `GET /api/access/session/{guest_id}?zone_id=...`.
+
+Administrators (Bearer JWT; **administrator** role and matching `owner.zone_id`): `GET /api/access/qr-link?zone_id=...&event_id=optional` returns `url`, `zone_id`, `path_with_query` (`/access?zid=…`). Optional `GET /api/access/qr.png` returns PNG (needs `GUEST_ACCESS_APP_BASE_URL` or legacy `PUBLIC_WEB_APP_URL`). Unexpected guests: `POST /api/access/approve`, `POST /api/access/reject`.
+
+**Deploy:** set `GUEST_ACCESS_APP_BASE_URL` (SPA origin, no trailing slash). Optional `GUEST_ACCESS_PERMISSION_MAX_PER_MINUTE` (default 60) limits anonymous arrivals per client IP. See **Testing** below for manual checks.
 
 ## Contract API Endpoints
 
@@ -187,8 +195,12 @@ curl -X POST http://localhost:8000/zones/ \
 ## Testing
 
 ```bash
-pytest tests/ -v
+PYTHONPATH=. pytest tests/ -v
 ```
+
+Guest QR URL helpers: `tests/test_guest_access_qr.py` (no database).
+
+Manual checks for authenticated QR routes (after DB + env are configured): administrator JWT → `GET /api/access/qr-link?zone_id=<your_zone>`; optional `GET /api/access/qr.png`; member (non-admin) JWT → expect **403** on those routes; anonymous `POST /api/access/permission` → **429** after exceeding `GUEST_ACCESS_PERMISSION_MAX_PER_MINUTE` per minute per IP.
 
 ## License
 

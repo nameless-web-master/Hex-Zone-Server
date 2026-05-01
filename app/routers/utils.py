@@ -88,8 +88,9 @@ async def convert_to_h3(
     response_model=QRRegistrationResponse,
     summary="Generate QR registration token",
     description=(
-        "Generate invite token used by QR-code join flow. Only private-account "
-        "administrators can issue invitation tokens."
+        "Generate invite token used by **account/member join** QR flow only. "
+        "Not for door guest access — use **`GET /api/access/qr-link`** for canonical **`/access?zid=`** URLs. "
+        "Only private-account administrators can issue invitation tokens."
     ),
     responses={
         status.HTTP_403_FORBIDDEN: {

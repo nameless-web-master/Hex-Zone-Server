@@ -1,7 +1,7 @@
 """Member location snapshot model."""
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -16,7 +16,3 @@ class MemberLocation(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     owner = relationship("Owner")
-
-    __table_args__ = (
-        Index("ix_member_locations_updated_at", "updated_at"),
-    )

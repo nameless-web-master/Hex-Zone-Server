@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
+    # Guest access QR: canonical SPA origin for `/access?zid=...` (no trailing slash).
+    # Production/staging: set **GUEST_ACCESS_APP_BASE_URL** (e.g. https://app.example.com).
+    # **PUBLIC_WEB_APP_URL** is a deprecated alias read when GUEST_ACCESS_APP_BASE_URL is empty.
+    GUEST_ACCESS_APP_BASE_URL: str = ""
+    PUBLIC_WEB_APP_URL: str = ""
+
+    # Anonymous POST /api/access/permission: max requests per client IP per rolling minute.
+    GUEST_ACCESS_PERMISSION_MAX_PER_MINUTE: int = 60
+
     # H3
     H3_DEFAULT_RESOLUTION: int = 13
     H3_MIN_RESOLUTION: int = 0

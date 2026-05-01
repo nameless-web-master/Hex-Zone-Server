@@ -126,6 +126,36 @@ class GuestAccessSessionListItem(BaseModel):
     )
 
 
+class GuestAccessQrLinkResponse(BaseModel):
+    """Administrator fetch of the stable guest deep link (same string encoded by GET /api/access/qr.png)."""
+
+    url: str | None = Field(
+        default=None,
+        description=(
+            "Absolute URL when **GUEST_ACCESS_APP_BASE_URL** (or legacy **PUBLIC_WEB_APP_URL**) is set; "
+            "otherwise null — use **path_with_query** with your known web origin."
+        ),
+    )
+    zone_id: str = Field(description="Echo of the requested zone id (matches query/body elsewhere).")
+    path_with_query: str = Field(
+        ...,
+        description="`/access?zid=...` with optional `eid`; no PII. Encode this in QR if **url** is null.",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "url": "https://app.example.com/access?zid=ZN-1XOJPP&eid=EVT1",
+                    "zone_id": "ZN-1XOJPP",
+                    "path_with_query": "/access?zid=ZN-1XOJPP&eid=EVT1",
+                },
+                {"url": None, "zone_id": "ZN-1XOJPP", "path_with_query": "/access?zid=ZN-1XOJPP"},
+            ]
+        }
+    )
+
+
 class GuestSessionPollResponse(BaseModel):
     """Poll shape for guests waiting on approval."""
 

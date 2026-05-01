@@ -1,0 +1,46 @@
+"""Unit tests for guest-access QR URL helpers (no DB — integration checklist is in README)."""
+
+from __future__ import annotations
+
+from app.core.config import settings
+from app.services import guest_access_qr
+
+
+def test_guest_access_path_zid_only():
+    assert guest_access_qr.guest_access_path_with_query("ZN-1XOJPP") == "/access?zid=ZN-1XOJPP"
+
+
+def test_guest_access_path_with_eid():
+    path = guest_access_qr.guest_access_path_with_query("ZN-1XOJPP", "EVT-01")
+    assert path == "/access?zid=ZN-1XOJPP&eid=EVT-01"
+
+
+def test_guest_access_path_percent_encodes_space():
+    path = guest_access_qr.guest_access_path_with_query("ZN X")
+    assert "zid=" in path
+    assert "%20" in path
+
+
+def test_absolute_url_uses_guest_env_first(monkeypatch):
+    monkeypatch.setattr(settings, "GUEST_ACCESS_APP_BASE_URL", "https://app.example.com")
+    monkeypatch.setattr(settings, "PUBLIC_WEB_APP_URL", "https://ignored.example.com")
+    url = guest_access_qr.guest_access_absolute_url("Z1", None)
+    assert url == "https://app.example.com/access?zid=Z1"
+
+
+def test_absolute_url_falls_back_public_web_app_url(monkeypatch):
+    monkeypatch.setattr(settings, "GUEST_ACCESS_APP_BASE_URL", "")
+    monkeypatch.setattr(settings, "PUBLIC_WEB_APP_URL", "https://legacy.example.com/")
+    url = guest_access_qr.guest_access_absolute_url("Z1", "E")
+    assert url == "https://legacy.example.com/access?zid=Z1&eid=E"
+
+
+def test_absolute_url_none_without_base(monkeypatch):
+    monkeypatch.setattr(settings, "GUEST_ACCESS_APP_BASE_URL", "")
+    monkeypatch.setattr(settings, "PUBLIC_WEB_APP_URL", "")
+    assert guest_access_qr.guest_access_absolute_url("Z1") is None
+
+
+def test_qr_png_non_empty():
+    png = guest_access_qr.qr_png_bytes_for_url("https://example.com/access?zid=Z")
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
