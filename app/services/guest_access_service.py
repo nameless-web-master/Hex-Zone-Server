@@ -259,6 +259,7 @@ def process_guest_arrival(
             "status": decision,
             "message": msg_guest,
             "guest_id": guest_token,
+            "zone_id": zone_id,
         },
         "ws_guest_is_here": ws_guest_is_here,
         "ws_unexpected_guest": ws_unexpected,

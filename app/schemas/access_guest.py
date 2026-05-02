@@ -28,7 +28,10 @@ class GuestArrivalRequest(BaseModel):
         default=None,
         min_length=8,
         max_length=96,
-        description="Opaque token from backend QR (`?gt=`). Resolves zone (and optional event binding).",
+        description=(
+            "Opaque secret from SPA **`gt`** ( **`/access?gt=…`**, preferably **`…&zid=…`** from server-mint URLs). "
+            "Resolves **zone_id** server-side plus optional token-bound **event_id**."
+        ),
     )
     guest_name: str = Field(..., min_length=1, max_length=255, description="Name entered by guest.")
     event_id: str | None = Field(
@@ -61,6 +64,11 @@ class GuestArrivalRequest(BaseModel):
                     "guest_qr_token": "AbCdEf1234567890abcdefghijklmnopQRtoken",
                     "guest_name": "Walk-in",
                     "event_id": "EVT-optional",
+                },
+                {
+                    "guest_qr_token": "AbCdEf1234567890abcdefghijklmnopQRtoken",
+                    "zone_id": "ZN-ABC",
+                    "guest_name": "Walk-in",
                 },
             ]
         }
@@ -96,6 +104,12 @@ class GuestScanResponse(BaseModel):
     )
     message: str = Field(description="Guest-facing instruction text.")
     guest_id: str = Field(description="Opaque id for polling GET /api/access/session/{guest_id}.")
+    zone_id: str = Field(
+        description=(
+            "Arrival zone: pass as **`zone_id`** on `GET /api/access/session/{guest_id}` when the invite URL "
+            "had no **`zid`**; **`zone_id`** may also be omitted on that GET (server resolves **`guest_id`** alone)."
+        ),
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -104,11 +118,13 @@ class GuestScanResponse(BaseModel):
                     "status": "EXPECTED",
                     "message": "You are expected. Please proceed.",
                     "guest_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "zone_id": "ZN-ABC",
                 },
                 {
                     "status": "UNEXPECTED",
                     "message": "You are not scheduled. Please wait for approval.",
                     "guest_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+                    "zone_id": "ZN-ABC",
                 },
             ]
         }
@@ -184,7 +200,7 @@ class GuestAccessQrLinkResponse(BaseModel):
 
 
 class GuestQrTokenCreate(BaseModel):
-    """Mint a time-bound guest QR link (`?gt=`). Administrator JWT required."""
+    """Mint a time-bound guest door token; SPA **`/access?gt=…&zid=…`** (optional **`eid`**). JWT administrator required."""
 
     zone_id: str = Field(..., min_length=1, max_length=100)
     expires_in_hours: float | None = Field(
@@ -225,24 +241,66 @@ class GuestQrTokenListItem(BaseModel):
 class GuestQrTokenCreatedResponse(GuestQrTokenListItem):
     """Returned once when minting; includes secret **token** for QR encoding."""
 
-    token: str = Field(description="Embed as SPA query **gt**. Not stored in list APIs.")
-    url: str | None = Field(description="Absolute URL when web base env is configured.")
-    path_with_query: str = Field(description="e.g. `/access?gt=…`")
+    token: str = Field(description="Opaque **gt** value; URLs from this API also include **zid** (and **eid** when set). Not stored in list APIs.")
+    url: str | None = Field(description="Absolute URL when **GUEST_ACCESS_APP_BASE_URL** (or legacy **PUBLIC_WEB_APP_URL**) is set.")
+    path_with_query: str = Field(
+        description="SPA path **`/access?gt=…&zid=…`** ( **`eid`** appended when bound on this token)."
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": 1,
+                    "zone_id": "ZN-DEMO",
+                    "event_id": "EVT01",
+                    "label": None,
+                    "expires_at": "2026-12-31T23:59:59",
+                    "revoked_at": None,
+                    "max_uses": None,
+                    "use_count": 0,
+                    "created_at": "2026-01-01T12:00:00",
+                    "last_used_at": None,
+                    "created_by_owner_id": 42,
+                    "token_suffix": "Qr8x",
+                    "token": "__secret_only_at_create__",
+                    "url": "https://app.example.com/access?gt=__secret_only_at_create__&zid=ZN-DEMO&eid=EVT01",
+                    "path_with_query": "/access?gt=__secret_only_at_create__&zid=ZN-DEMO&eid=EVT01",
+                }
+            ]
+        }
+    )
 
 
 class GuestQrTokenLinkBundle(BaseModel):
     """Resolved URL for an existing stored token (admin); secret never appears in list APIs."""
 
-    id: int
-    url: str | None = None
-    path_with_query: str
+    id: int = Field(description="Row id (**guest_access_qr_tokens**).")
+    url: str | None = Field(default=None, description="Absolute SPA URL (**gt + zid**), if web base env is configured.")
+    path_with_query: str = Field(
+        description=(
+            "`/access?gt=…&zid=…` (optional **`eid`**); same rules as **`POST /api/access/qr-tokens`**."
+        )
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": 7,
+                    "url": "https://app.example.com/access?gt=opaque&zid=ZN-1&eid=E1",
+                    "path_with_query": "/access?gt=opaque&zid=ZN-1&eid=E1",
+                }
+            ]
+        }
+    )
 
 
 class GuestSessionPollResponse(BaseModel):
-    """Poll shape for guests waiting on approval."""
+    """Poll shape after permission; callers may use **`GET …/session/{guest_id}?zone_id=`** or omit **`zone_id`**."""
 
-    guest_id: str
-    zone_id: str
+    guest_id: str = Field(description="Same **guest_id** returned by **`POST /api/access/permission`**.")
+    zone_id: str = Field(description="Session zone (echoed for display; poll may filter by **`zone_id`** query or omit it).")
     status: Literal["EXPECTED", "UNEXPECTED", "APPROVED", "REJECTED"] = Field(
         description="EXPECTED: scheduled guest; UNEXPECTED: still pending admin; APPROVED/REJECTED: resolved."
     )

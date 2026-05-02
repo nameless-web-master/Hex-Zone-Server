@@ -101,8 +101,9 @@ OPENAPI_TAGS = [
         "name": "access",
         "description": (
             "Public guest entry for **zone QR scans** (no JWT): `POST /api/access/permission`, "
-            "`GET /api/access/session/{guest_id}` (poll). "
-            "**Administrators** mint DB-backed tokens (`POST /api/access/qr-tokens`, SPA **`/access?gt=`**) "
+            "`GET /api/access/session/{guest_id}` (**`zone_id`** query recommended; optional — guest id alone resolves). "
+            "**Permission** response includes **`zone_id`** for clients that opened only **`?gt=`**. "
+            "**Administrators** mint DB-backed tokens (`POST /api/access/qr-tokens`, SPA **`/access?gt=&zid=`**, optional **`eid`**) "
             "or static links (`GET /api/access/qr-link`, **`/access?zid=`**); optional server PNG QR. "
             "Approve/reject: `POST /api/access/approve|reject` (Bearer JWT). "
             "Not member-invite (`/utils/qr/generate`)."
@@ -125,8 +126,9 @@ app = FastAPI(
         "- User registration: account + optional Zone #2/#3 + schedule access + request access "
         "(no registration code required).\n"
         "- Login: email/username and password authentication.\n"
-        "- **QR guest access (no login):** SPA **`/access?zid=`** or **`/access?gt=`** (issued token); "
-        "guest submits name → `POST /api/access/permission`. "
+        "- **QR guest access (no login):** SPA **`/access?zid=`** (static) or **`/access?gt=&zid=`** (issued token; legacy **`gt`**-only URLs still work); "
+        "guest submits name → `POST /api/access/permission` (response includes **`zone_id`**). "
+        "Poll **`GET /api/access/session/{guest_id}`** with **`?zone_id=`** from URL or permission body, or omit **`zone_id`** to resolve by guest id. "
         "Administrators mint tokens with **`POST /api/access/qr-tokens`** or static **`GET /api/access/qr-link`**. "
         "Members create expectations via `/message-feature/access/schedules`; unexpected visits notify "
         "via WebSocket `unexpected_guest` / `guest_is_here`. "

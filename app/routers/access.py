@@ -38,7 +38,9 @@ router = APIRouter(prefix="/api/access", tags=["access"])
 
 _PERM_SUMMARY = "Guest arrival (QR scan)"
 _PERM_DESCRIPTION = """
-No authentication. Supply either **zone_id** (static QR `?zid=`) or **guest_qr_token** (issued QR `?gt=`).
+No authentication. Supply either **`zone_id`** (static SPA / QR: **`/access?zid=`**) or **`guest_qr_token`**
+(opaque **`gt`** from an issued invite). Server-mint links use **`/access?gt=…&zid=…`** (optional **`eid`** when the token binds an event);
+legacy **`/access?gt=…`** without **`zid`** is still accepted in the SPA, but **`zone_id`** in this body is omitted in that case.
 
 Validates that **zone_id** exists (explicit or resolved from token), finds an **active access schedule**
 whose window contains server time and matches **event_id** (if sent) **or** **guest_name**,
@@ -49,7 +51,9 @@ then:
 - **UNEXPECTED**: persist a pending session, push WebSocket **`unexpected_guest`** to all active owners
   sharing **zone_id**, and record a CHAT-shaped zone event as an admin↔guest thread anchor.
 
-Returns **guest_id** for polling (`GET /api/access/session/{guest_id}`).
+**Response** includes **`guest_id`** (poll path) and **`zone_id`** (use as **`zone_id`** query on
+`GET /api/access/session/{guest_id}` when the client does not already have **`zid`** from the URL).
+Session polling also succeeds with **`guest_id`** only (**`zone_id`** query omitted).
 
 Backend-issued tokens (`POST /api/access/qr-tokens`) may enforce expiry, revocation, and optional **max_uses** (counted on successful arrivals only).
 
@@ -96,7 +100,10 @@ def _require_guest_qr_administrator(db: Session, current_user: dict, zone_id: st
     status_code=status.HTTP_200_OK,
     summary=_PERM_SUMMARY,
     description=_PERM_DESCRIPTION.strip(),
-    response_description="Guest-facing outcome plus opaque guest_id for polling.",
+    response_description=(
+        "Guest-facing outcome, **`guest_id`** for polling, and **`zone_id`** for **`GET …/session/{guest_id}` "
+        "(when **`zid`** was not already in the invite URL)."
+    ),
     responses={
         status.HTTP_404_NOT_FOUND: {
             "description": "Unknown zone (**INVALID_ZONE**) or unknown guest QR token (**INVALID_TOKEN**).",
@@ -238,8 +245,9 @@ async def guest_permission(request: Request, payload: GuestArrivalRequest, db: S
     summary="Canonical guest-access deep link",
     description=(
         "Requires **Bearer** JWT. Caller must be a **zone administrator** with **owner.zone_id** equal "
-        "to **zone_id**. Returns the stable SPA path **`/access?zid=`** (optional **`eid=`**), and an absolute "
-        "**url** when **GUEST_ACCESS_APP_BASE_URL** is configured. "
+        "to **zone_id**. Returns the stable **zone-static** SPA path **`/access?zid=`** (optional **`eid=`**), "
+        "and an absolute **url** when **GUEST_ACCESS_APP_BASE_URL** is configured. "
+        "For opaque **stored guest tokens** (**`gt`** + **`zid`**), use **`POST /api/access/qr-tokens`** or **`GET …/qr-tokens/{id}/link`**. "
         "This is **not** the member-invite flow (`POST /utils/qr/generate`)."
     ),
     response_description="URL for QR encoding (no PII in query string).",
@@ -273,9 +281,9 @@ async def guest_access_qr_link(
     "/qr.png",
     summary="PNG QR code for guest-access URL",
     description=(
-        "Same authorization as **GET /api/access/qr-link**. Returns **image/png** bytes encoding the "
-        "same absolute URL as **qr-link**. Requires **GUEST_ACCESS_APP_BASE_URL** (or legacy **PUBLIC_WEB_APP_URL**) "
-        "so the encoded URL is absolute."
+        "**Zone-static** PNG ( **`/access?zid=`** ), same authorization and URL shape as **GET /api/access/qr-link**. "
+        "Requires **GUEST_ACCESS_APP_BASE_URL** (or legacy **PUBLIC_WEB_APP_URL**) so the encoded URL is absolute. "
+        "Stored-token PNGs (**`gt`**) use **GET `/api/access/qr-tokens/{qr_token_id}/qr.png`**."
     ),
     responses={
         status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid bearer token."},
@@ -332,7 +340,7 @@ async def guest_access_qr_png(
     summary="Create stored guest QR token",
     description=(
         "**Bearer** JWT; **administrator** for **zone_id**. Mints an opaque **guest_qr_token** used in "
-        "`POST /api/access/permission` and SPA **`/access?gt=`**. Default TTL **168h** if neither "
+        "`POST /api/access/permission` and SPA **`/access?gt=&zid=`**. Default TTL **168h** if neither "
         "**expires_at** nor **expires_in_hours** is sent."
     ),
     responses={
@@ -371,8 +379,16 @@ async def create_guest_access_qr_token(
     row = result["row"]
     db.commit()
     db.refresh(row)
-    path = guest_access_qr.guest_access_path_with_guest_token(row.token)
-    url = guest_access_qr.guest_access_absolute_url_with_guest_token(row.token)
+    path = guest_access_qr.guest_access_path_with_guest_token(
+        row.token,
+        zone_id=row.zone_id,
+        event_id=row.event_id,
+    )
+    url = guest_access_qr.guest_access_absolute_url_with_guest_token(
+        row.token,
+        zone_id=row.zone_id,
+        event_id=row.event_id,
+    )
     body = {
         **guest_access_qr_token_service.serialize_guest_qr_token_public(row),
         "token": row.token,
@@ -469,7 +485,10 @@ async def revoke_guest_access_qr_token(
     "/qr-tokens/{qr_token_id}/link",
     response_model=GuestQrTokenLinkBundle,
     summary="Resolve URL for stored guest QR token",
-    description="Returns absolute **url** when web base env is set (same rules as **GET /api/access/qr-link**).",
+    description=(
+        "Returns **`path_with_query`** and absolute **`url`** when **GUEST_ACCESS_APP_BASE_URL** is set — "
+        "same shape as **`POST /api/access/qr-tokens`**: **`/access?gt=…&zid=…`** (optional **`eid`**)."
+    ),
     responses={
         status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid bearer token."},
         status.HTTP_403_FORBIDDEN: {"model": GuestAccessHttpError},
@@ -500,15 +519,26 @@ async def guest_access_qr_token_link(
             detail={"error_code": result["error"], "message": result["message"]},
         )
     row = result["row"]
-    path = guest_access_qr.guest_access_path_with_guest_token(row.token)
-    url = guest_access_qr.guest_access_absolute_url_with_guest_token(row.token)
+    path = guest_access_qr.guest_access_path_with_guest_token(
+        row.token,
+        zone_id=row.zone_id,
+        event_id=row.event_id,
+    )
+    url = guest_access_qr.guest_access_absolute_url_with_guest_token(
+        row.token,
+        zone_id=row.zone_id,
+        event_id=row.event_id,
+    )
     return GuestQrTokenLinkBundle(id=row.id, url=url, path_with_query=path)
 
 
 @router.get(
     "/qr-tokens/{qr_token_id}/qr.png",
     summary="PNG QR for stored guest token URL",
-    description="Same as **GET /api/access/qr.png** but for a DB-backed token row.",
+    description=(
+        "Encodes the same absolute URL as **`GET /api/access/qr-tokens/{id}/link`** "
+        "(**`gt` + `zid`**, optional **`eid`**), not **`GET /api/access/qr.png`** (zone-static **`zid`** only)."
+    ),
     responses={
         status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid bearer token."},
         status.HTTP_403_FORBIDDEN: {"model": GuestAccessHttpError},
@@ -541,7 +571,11 @@ async def guest_access_qr_token_png(
             detail={"error_code": result["error"], "message": result["message"]},
         )
     row = result["row"]
-    url = guest_access_qr.guest_access_absolute_url_with_guest_token(row.token)
+    url = guest_access_qr.guest_access_absolute_url_with_guest_token(
+        row.token,
+        zone_id=row.zone_id,
+        event_id=row.event_id,
+    )
     if not url:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -573,32 +607,37 @@ async def guest_access_qr_token_png(
     status_code=status.HTTP_200_OK,
     summary="Poll guest session status",
     description=(
-        "Public poll for guest clients without a WebSocket. Supply **guest_id** from "
-        "POST /api/access/permission and the same **zone_id** query parameter used at arrival."
+        "Public poll for guest clients without a WebSocket. Provide **guest_id** from "
+        "`POST /api/access/permission`. "
+        "**`zone_id`** should match arrival (invite **`zid`**, **`gt`** QR `zid`, or **`zone_id`** in the permission response); "
+        "when omitted the server resolves **guest_id** alone (opaque UUID)."
     ),
     response_description="Guest-visible status and instructional message.",
     responses={
         status.HTTP_404_NOT_FOUND: {
-            "description": "No session for this guest_id + zone_id pair.",
+            "description": "No matching guest session (unknown guest_id or wrong zone_id).",
             "model": GuestAccessHttpError,
         },
     },
 )
 async def guest_session_status(
     guest_id: str,
-    zone_id: str = Query(
-        ...,
+    zone_id: str | None = Query(
+        default=None,
         min_length=1,
         max_length=100,
-        description="Must match the zone_id submitted at arrival.",
+        description=(
+            "Arrival zone. Omit only when resolving by guest_id alone "
+            "(e.g. bookmarked **`/access?gt=`** without **`zid`**)."
+        ),
     ),
     db: Session = Depends(get_db),
 ):
-    row = (
-        db.query(GuestAccessSession)
-        .filter(GuestAccessSession.guest_id == guest_id, GuestAccessSession.zone_id == zone_id.strip())
-        .first()
-    )
+    q = db.query(GuestAccessSession).filter(GuestAccessSession.guest_id == guest_id.strip())
+    z = (zone_id or "").strip()
+    if z:
+        q = q.filter(GuestAccessSession.zone_id == z)
+    row = q.first()
     if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

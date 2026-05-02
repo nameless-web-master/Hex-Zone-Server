@@ -29,18 +29,47 @@ def guest_access_path_with_query(zone_id: str, event_id: str | None = None) -> s
     return f"/access?{qs}"
 
 
-def guest_access_path_with_guest_token(secret_token: str) -> str:
-    """Deep-link path using opaque backend token (`gt`), e.g. `/access?gt=…`."""
+def build_guest_access_query_params_for_guest_token(
+    secret_token: str,
+    zone_id: str | None,
+    event_id: str | None,
+) -> dict[str, str]:
+    """Query for issued QR tokens: **`gt`** plus **`zid`** (and **`eid`** when bound)."""
     tok = secret_token.strip()
-    qs = urlencode({"gt": tok}, quote_via=quote)
+    params: dict[str, str] = {"gt": tok}
+    z = (zone_id or "").strip()
+    if z:
+        params["zid"] = z
+    ev = (event_id or "").strip()
+    if ev:
+        params["eid"] = ev
+    return params
+
+
+def guest_access_path_with_guest_token(
+    secret_token: str,
+    *,
+    zone_id: str | None = None,
+    event_id: str | None = None,
+) -> str:
+    """Deep-link path: **`?gt=`**; when **zone_id** is set (server-mint URLs), **`zid`** (and optional **`eid`**) included."""
+    qs = urlencode(
+        build_guest_access_query_params_for_guest_token(secret_token, zone_id, event_id),
+        quote_via=quote,
+    )
     return f"/access?{qs}"
 
 
-def guest_access_absolute_url_with_guest_token(secret_token: str) -> str | None:
+def guest_access_absolute_url_with_guest_token(
+    secret_token: str,
+    *,
+    zone_id: str | None = None,
+    event_id: str | None = None,
+) -> str | None:
     base = guest_access_web_base()
     if not base:
         return None
-    return f"{base}{guest_access_path_with_guest_token(secret_token)}"
+    return f"{base}{guest_access_path_with_guest_token(secret_token, zone_id=zone_id, event_id=event_id)}"
 
 
 def guest_access_absolute_url(zone_id: str, event_id: str | None = None) -> str | None:
