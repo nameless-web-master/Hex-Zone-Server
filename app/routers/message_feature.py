@@ -536,6 +536,12 @@ async def create_block_rule(
     db.add(block)
     db.commit()
     db.refresh(block)
+    block_payload = BlockRuleResponse.model_validate(block).model_dump(mode="json")
+    await ws_manager.broadcast_to_users(
+        [owner.id],
+        "BLOCKS_CHANGED",
+        {"action": "created", "block": block_payload},
+    )
     return block
 
 
@@ -559,8 +565,14 @@ async def delete_block_rule(
     row = db.get(MessageBlock, block_id)
     if not row or row.owner_id != current_user["user_id"]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block rule not found")
+    owner_id = row.owner_id
     db.delete(row)
     db.commit()
+    await ws_manager.broadcast_to_users(
+        [owner_id],
+        "BLOCKS_CHANGED",
+        {"action": "deleted", "block_id": block_id},
+    )
 
 
 @router.post(
@@ -800,6 +812,19 @@ async def approve_guest_request_message_feature(
             detail={"error_code": result["error"], "message": result["message"]},
         )
     db.commit()
+    guest_id = session_row.guest_id.strip()
+    notify_ids = guest_access_service.zone_member_owner_ids(db, effective_zone_id)
+    if notify_ids:
+        await ws_manager.broadcast_to_users(
+            notify_ids,
+            "GUEST_REQUEST_CHANGED",
+            {
+                "guest_id": guest_id,
+                "zone_id": effective_zone_id,
+                "status": "APPROVED",
+                "request_id": str(requestId),
+            },
+        )
     return GuestRequestDecisionEnvelope(
         data=GuestRequestDecisionData(
             id=str(requestId),
@@ -878,6 +903,19 @@ async def reject_guest_request_message_feature(
             detail={"error_code": result["error"], "message": result["message"]},
         )
     db.commit()
+    guest_id = session_row.guest_id.strip()
+    notify_ids = guest_access_service.zone_member_owner_ids(db, effective_zone_id)
+    if notify_ids:
+        await ws_manager.broadcast_to_users(
+            notify_ids,
+            "GUEST_REQUEST_CHANGED",
+            {
+                "guest_id": guest_id,
+                "zone_id": effective_zone_id,
+                "status": "REJECTED",
+                "request_id": str(requestId),
+            },
+        )
     return GuestRequestDecisionEnvelope(
         data=GuestRequestDecisionData(
             id=str(requestId),

@@ -1,11 +1,20 @@
 """Websocket endpoint for realtime zone subscriptions.
 
-After **`?token=`** JWT auth, clients send JSON text **`type=SUBSCRIBE`** with **`zoneIds`** array.
+After **`?token=`** JWT auth, clients send JSON text frames:
+
+- **`type=SUBSCRIBE`** with **`zoneIds`** array — zone fan-out for messages.
+- **`type=LOCATION_UPDATE`** with **`latitude`/`longitude`** (top-level or under **`data`**) —
+  upserts live GPS via the same path as **`POST /message-feature/members/location`**.
 
 Server sends **`type`** + **`data`** envelopes. Common **`type`** values:
 
-- **`NEW_MESSAGE`** — **`data`** matches **`ZoneMessageResponse`** JSON for member posts or (when **`MESSAGES_INBOX_MERGE_GUEST_ACCESS_CHAT`**) Access **`CHAT`** (**UUID **`id`**, **`guest_id`** when present) delivered to participant **`owners.id`**.
-- **`guest_zone_message`** — legacy **`POST /api/guest/messages`** push (nested **`event`** in **`data`**).
+- **`NEW_MESSAGE`** — **`data`** matches **`ZoneMessageResponse`** JSON.
+- **`NEW_GEO_MESSAGE`**, **`PERMISSION_MESSAGE`**, **`WELLNESS_ACK`**
+- **`guest_is_here`**, **`unexpected_guest`**, **`GUEST_REQUEST_CHANGED`**
+- **`BLOCKS_CHANGED`** — block-rule create/delete for the owning user
+- **`SESSION_REVOKED`** — another device claimed the account session
+- **`LOCATION_UPDATE_ACK`** — ack after a successful **`LOCATION_UPDATE`**
+- **`guest_zone_message`** — legacy **`POST /api/guest/messages`** push
 """
 import json
 import logging
@@ -14,10 +23,69 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi import HTTPException
 
 from app.core.security import verify_token
+from app.crud import owner as owner_crud
+from app.database import session_maker
+from app.services.member_service import upsert_member_location
 from app.websocket.manager import ws_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _coords_from_frame(data: dict) -> tuple[float, float] | None:
+    """Accept lat/lng at top level or nested under ``data``."""
+    nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+    latitude = data.get("latitude", nested.get("latitude") if nested else None)
+    longitude = data.get("longitude", nested.get("longitude") if nested else None)
+    if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+        return None
+    return float(latitude), float(longitude)
+
+
+async def _handle_location_update(websocket: WebSocket, user_id: str, data: dict) -> None:
+    coords = _coords_from_frame(data)
+    if coords is None:
+        await websocket.send_json(
+            {
+                "type": "ERROR",
+                "error": {"message": "latitude/longitude are required numbers"},
+            }
+        )
+        return
+
+    latitude, longitude = coords
+    try:
+        owner_pk = int(user_id)
+    except (TypeError, ValueError):
+        await websocket.send_json(
+            {"type": "ERROR", "error": {"message": "Invalid user identity"}}
+        )
+        return
+
+    db = session_maker()
+    try:
+        owner = owner_crud.get_owner(db, owner_pk)
+        if not owner:
+            await websocket.send_json(
+                {"type": "ERROR", "error": {"message": "Owner not found"}}
+            )
+            return
+        matched = upsert_member_location(db, owner.id, latitude, longitude)
+        db.commit()
+        await websocket.send_json(
+            {
+                "type": "LOCATION_UPDATE_ACK",
+                "data": {"zone_ids": matched.get("zones") or []},
+            }
+        )
+    except Exception:
+        db.rollback()
+        logger.exception("WebSocket LOCATION_UPDATE failed: user_id=%s", user_id)
+        await websocket.send_json(
+            {"type": "ERROR", "error": {"message": "Failed to update location"}}
+        )
+    finally:
+        db.close()
 
 
 async def _zone_websocket_session(websocket: WebSocket) -> None:
@@ -60,6 +128,10 @@ async def _zone_websocket_session(websocket: WebSocket) -> None:
                 continue
 
             message_type = data.get("type")
+            if message_type == "LOCATION_UPDATE":
+                await _handle_location_update(websocket, user_id, data)
+                continue
+
             if message_type != "SUBSCRIBE":
                 logger.warning(
                     "WebSocket unsupported message type: connection_id=%s type=%s",

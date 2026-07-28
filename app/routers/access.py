@@ -888,8 +888,26 @@ async def guest_permission(request: Request, payload: GuestArrivalRequest, db: S
 
     for user_ids, event_payload in result.get("ws_guest_is_here") or []:
         await ws_manager.broadcast_to_users(user_ids, "guest_is_here", event_payload)
+        await ws_manager.broadcast_to_users(
+            user_ids,
+            "GUEST_REQUEST_CHANGED",
+            {
+                "guest_id": event_payload.get("guest_id"),
+                "zone_id": event_payload.get("zone_id") or effective_zone_id,
+                "status": "APPROVED",
+            },
+        )
     for user_ids, event_payload in result.get("ws_unexpected_guest") or []:
         await ws_manager.broadcast_to_users(user_ids, "unexpected_guest", event_payload)
+        await ws_manager.broadcast_to_users(
+            user_ids,
+            "GUEST_REQUEST_CHANGED",
+            {
+                "guest_id": event_payload.get("guest_id"),
+                "zone_id": event_payload.get("zone_id") or effective_zone_id,
+                "status": "PENDING",
+            },
+        )
 
     return AccessPermissionResponseEnvelope(data=AccessPermissionResponseData.model_validate(gr))
 
@@ -1800,6 +1818,15 @@ async def approve_guest(
             detail={"error_code": result["error"], "message": result["message"]},
         )
     db.commit()
+    zone_id = payload.zone_id.strip()
+    guest_id = payload.guest_id.strip()
+    notify_ids = guest_access_service.zone_member_owner_ids(db, zone_id)
+    if notify_ids:
+        await ws_manager.broadcast_to_users(
+            notify_ids,
+            "GUEST_REQUEST_CHANGED",
+            {"guest_id": guest_id, "zone_id": zone_id, "status": "APPROVED"},
+        )
     return GuestAdminDecisionResponse.model_validate(result["guest_response"])
 
 
@@ -1858,4 +1885,13 @@ async def reject_guest(
             detail={"error_code": result["error"], "message": result["message"]},
         )
     db.commit()
+    zone_id = payload.zone_id.strip()
+    guest_id = payload.guest_id.strip()
+    notify_ids = guest_access_service.zone_member_owner_ids(db, zone_id)
+    if notify_ids:
+        await ws_manager.broadcast_to_users(
+            notify_ids,
+            "GUEST_REQUEST_CHANGED",
+            {"guest_id": guest_id, "zone_id": zone_id, "status": "REJECTED"},
+        )
     return GuestAdminDecisionResponse.model_validate(result["guest_response"])

@@ -22,6 +22,7 @@ from app.services.device_entitlements import (
     expire_stale_device_sessions,
     release_other_device_sessions,
 )
+from app.websocket.manager import ws_manager
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -202,6 +203,22 @@ async def claim_device_session(
     release_other_device_sessions(db, owner.id, keep_hid=payload.hid)
     evict_offline_devices_to_make_room(db, owner)
     db.commit()
+    kept_hid = str(payload.hid).strip() if payload.hid else None
+    released_hids = [
+        str(device.hid).strip()
+        for device in online_others
+        if device.hid is not None and str(device.hid).strip()
+    ]
+    if released_hids:
+        await ws_manager.broadcast_to_users(
+            [owner.id],
+            "SESSION_REVOKED",
+            {
+                "kept_hid": kept_hid,
+                "released_hids": released_hids,
+                "reason": "device_claim_session",
+            },
+        )
     return DeviceClaimSessionResponse(released=len(online_others))
 
 
