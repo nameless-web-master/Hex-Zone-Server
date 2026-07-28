@@ -25,6 +25,7 @@ from app.services.access_policy import can_message_owner
 from app.services import message_block_service
 from app.services.account_type_policy import assert_owner_may_edit_network_id
 from app.services.owner_home_service import apply_owner_home_geocode, sync_owner_home_from_address
+from app.services.avatar_upload_service import upload_avatar_image
 
 router = APIRouter(tags=["contract"])
 
@@ -474,6 +475,36 @@ async def get_me(owner: Owner = Depends(require_auth), db: Session = Depends(get
         api_key=owner.api_key,
     )
     return success_response(data.model_dump())
+
+
+class AvatarUploadRequest(BaseModel):
+    """Base64 image payload from the mobile profile picker."""
+
+    image: str = Field(
+        ...,
+        min_length=32,
+        description="Data URL (data:image/...;base64,...) or raw base64 image bytes.",
+    )
+
+
+@router.post(
+    "/me/avatar",
+    summary="Upload profile avatar",
+    description=(
+        "Upload a profile photo via a third-party image host and persist the "
+        "returned HTTPS URL on the authenticated owner."
+    ),
+)
+async def upload_my_avatar(
+    payload: AvatarUploadRequest,
+    owner: Owner = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    url = await upload_avatar_image(payload.image)
+    owner.avatar_url = url
+    db.commit()
+    db.refresh(owner)
+    return success_response({"avatar_url": url})
 
 
 @router.post(
