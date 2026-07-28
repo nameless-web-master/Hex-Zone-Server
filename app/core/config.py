@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     # enforces the "Enhanced Security for Push Notifications" setting).
     EXPO_ACCESS_TOKEN: str = ""
 
+    # Optional Catbox account hash (https://catbox.moe → account). When set,
+    # avatar uploads are attached to that account and appear in the gallery.
+    # When empty, uploads are anonymous — reachable only via the returned URL.
+    CATBOX_USERHASH: str = ""
+
     # Devices marked online but without a heartbeat within this window are treated
     # as offline for session conflict checks and claim-session flows.
     DEVICE_PRESENCE_TIMEOUT_SECONDS: int = 1800

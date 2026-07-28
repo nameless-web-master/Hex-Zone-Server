@@ -9,9 +9,13 @@ from typing import Tuple
 import httpx
 from fastapi import HTTPException, status
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
-# Free anonymous host (no API key). Returns a plain-text public HTTPS URL.
+# Free host (no API key). Returns a plain-text public HTTPS URL.
+# Without CATBOX_USERHASH, uploads are anonymous and will NOT appear in any
+# Catbox account gallery — only the returned URL can locate the file.
 CATBOX_UPLOAD_URL = "https://catbox.moe/user/api.php"
 MAX_AVATAR_BYTES = 2_500_000  # ~2.5 MB decoded
 
@@ -78,11 +82,16 @@ async def upload_avatar_image(raw_image: str) -> str:
     data, mime = parse_image_payload(raw_image)
     filename = f"avatar.{_extension_for_mime(mime)}"
 
+    form: dict[str, str] = {"reqtype": "fileupload"}
+    userhash = (settings.CATBOX_USERHASH or "").strip()
+    if userhash:
+        form["userhash"] = userhash
+
     try:
         async with httpx.AsyncClient(timeout=45.0) as client:
             response = await client.post(
                 CATBOX_UPLOAD_URL,
-                data={"reqtype": "fileupload"},
+                data=form,
                 files={"fileToUpload": (filename, data, mime)},
             )
     except httpx.HTTPError as exc:
@@ -110,4 +119,9 @@ async def upload_avatar_image(raw_image: str) -> str:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Image upload service returned an invalid URL",
         )
+    logger.info(
+        "Avatar uploaded to Catbox (%s): %s",
+        "account" if userhash else "anonymous",
+        url,
+    )
     return url
