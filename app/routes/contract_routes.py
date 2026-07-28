@@ -296,6 +296,7 @@ class OwnerContractResponse(BaseModel):
     account_owner_id: int
     address: str
     phone: str | None = None
+    avatar_url: str | None = None
     map_center: MemberLocationResponse | None = None
     active: bool
     expired: bool
@@ -464,6 +465,7 @@ async def get_me(owner: Owner = Depends(require_auth), db: Session = Depends(get
         account_owner_id=owner.account_owner_id or owner.id,
         address=owner.address,
         phone=owner.phone,
+        avatar_url=getattr(owner, "avatar_url", None),
         map_center=map_center,
         active=owner.active,
         expired=owner.expired,

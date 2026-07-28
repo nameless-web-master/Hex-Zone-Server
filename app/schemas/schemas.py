@@ -44,6 +44,7 @@ class OwnerBase(BaseModel):
     account_owner_id: Optional[int] = Field(None, ge=1)
     address: str = Field(..., min_length=1, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
+    avatar_url: Optional[str] = None
 
 
 class OwnerCreate(BaseModel):
@@ -126,6 +127,19 @@ class OwnerUpdate(BaseModel):
     zone_id: Optional[str] = Field(None, min_length=1, max_length=100)
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    email: Optional[EmailStr] = Field(
+        None,
+        description="Login email. Must remain unique across owners.",
+    )
+    role: Optional[OwnerRoleEnum] = Field(
+        None,
+        description="Account role (administrator or user). Callers may update their own role.",
+    )
+    avatar_url: Optional[str] = Field(
+        None,
+        description="Profile image URL or data URI. Pass empty string to clear.",
+        max_length=350_000,
+    )
     active: Optional[bool] = None
     account_type: Optional[AccountTypeEnum] = Field(
         None,

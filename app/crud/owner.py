@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.future import select
 from sqlalchemy import func
 from app.models import Owner, Zone
-from app.models.owner import AccountType
+from app.models.owner import AccountType, OwnerRole
 from app.schemas.schemas import OwnerCreate, OwnerUpdate
 from app.core.security import get_password_hash, generate_api_key
 from app.crud.zone import apply_zone_geo_fence_geojson
@@ -115,8 +115,22 @@ def update_owner(db: Session, owner_id: int, owner_update: OwnerUpdate) -> Optio
     
     update_data = owner_update.model_dump(exclude_unset=True)
     new_account_type = update_data.pop("account_type", None)
+    new_role = update_data.pop("role", None)
+    if "email" in update_data and isinstance(update_data["email"], str):
+        update_data["email"] = update_data["email"].strip().lower()
+    if "avatar_url" in update_data:
+        raw_avatar = update_data["avatar_url"]
+        update_data["avatar_url"] = (
+            None if raw_avatar is None or str(raw_avatar).strip() == "" else str(raw_avatar)
+        )
     for field, value in update_data.items():
         setattr(db_owner, field, value)
+
+    if new_role is not None:
+        role_value = new_role.value if hasattr(new_role, "value") else str(new_role)
+        db_owner.role = OwnerRole(role_value)
+        if db_owner.role == OwnerRole.ADMINISTRATOR and db_owner.account_owner_id is None:
+            db_owner.account_owner_id = db_owner.id
 
     if new_account_type is not None:
         account_type_value = (

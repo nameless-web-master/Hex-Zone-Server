@@ -1,5 +1,5 @@
 """Owner/User model."""
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Float, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Float, ForeignKey, Index, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -47,6 +47,8 @@ class Owner(Base):
     api_key = Column(String(255), unique=True, nullable=False, index=True)
     phone = Column(String(20), nullable=True)
     address = Column(String(255), nullable=False)
+    # Optional profile image as a URL or data URI (set from User settings).
+    avatar_url = Column(Text, nullable=True)
     # Canonical owner home location (geocoded from `address`) for SENSOR /
     # WELLNESS_CHECK routing and client `mapCenter`. Live GPS is in
     # `member_locations`, not mirrored here.

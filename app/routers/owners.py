@@ -311,6 +311,21 @@ async def update_owner(
             detail="Only administrators can change active status",
         )
 
+    if owner_update.email is not None:
+        normalized_email = str(owner_update.email).strip().lower()
+        existing = owner_crud.get_owner_by_email(db, normalized_email)
+        if existing and existing.id != owner_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email is already in use",
+            )
+
+    if owner_update.role is not None and not is_admin and current_user["user_id"] != owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to change another owner's role",
+        )
+
     if owner_update.account_type is not None:
         target = owner_crud.get_owner(db, owner_id)
         if not target:
