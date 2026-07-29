@@ -254,6 +254,7 @@ class MemberListItemResponse(BaseModel):
     address: str
     zone_id: str
     active: bool
+    avatar_url: str | None = None
     location: MemberLocationResponse | None = None
     lastSeen: str | None = None
     zones: list[str] = Field(default_factory=list)
@@ -491,8 +492,9 @@ class AvatarUploadRequest(BaseModel):
     "/me/avatar",
     summary="Upload profile avatar",
     description=(
-        "Upload a profile photo via a third-party image host and persist the "
-        "returned HTTPS URL on the authenticated owner."
+        "Accept a profile photo (data URL or base64), compress it, and persist "
+        "it on the authenticated owner. Prefers an optional Catbox upload when "
+        "CATBOX_USERHASH is configured; otherwise stores a compressed data URL."
     ),
 )
 async def upload_my_avatar(

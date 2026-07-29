@@ -87,6 +87,7 @@ def list_members(db: Session, owner: Owner, active: bool | None = None) -> list[
                 "address": member.address,
                 "zone_id": member.zone_id,
                 "active": member.active,
+                "avatar_url": getattr(member, "avatar_url", None) or None,
                 "location": None
                 if not location
                 else {"latitude": location.latitude, "longitude": location.longitude},
