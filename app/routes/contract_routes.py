@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request, status
 from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, model_validator
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,7 @@ from app.services.access_policy import can_message_owner
 from app.services import message_block_service
 from app.services.account_type_policy import assert_owner_may_edit_network_id
 from app.services.owner_home_service import apply_owner_home_geocode, sync_owner_home_from_address
-from app.services.avatar_upload_service import upload_avatar_image
+from app.services.avatar_upload_service import client_avatar_url, upload_avatar_image
 
 router = APIRouter(tags=["contract"])
 
@@ -251,9 +251,14 @@ class MemberListItemResponse(BaseModel):
     last_name: str
     email: EmailStr
     account_owner_id: int
+    role: Literal["administrator", "user"]
+    account_type: Literal[
+        "private", "private_plus", "exclusive", "enhanced", "enhanced_plus"
+    ]
     address: str
     zone_id: str
     active: bool
+    online: bool = False
     avatar_url: str | None = None
     location: MemberLocationResponse | None = None
     lastSeen: str | None = None
@@ -438,16 +443,22 @@ async def get_zones(owner: Owner = Depends(require_auth), db: Session = Depends(
     description="Return the authenticated owner profile used by mobile client bootstrap.",
     response_description="Success envelope containing authenticated contract profile.",
 )
-async def get_me(owner: Owner = Depends(require_auth), db: Session = Depends(get_db)):
-    try:
-        sync_owner_home_from_address(owner)
-        db.commit()
-        db.refresh(owner)
-    except Exception as exc:  # pragma: no cover - never block profile
-        logging.getLogger(__name__).warning(
-            "Home geocode refresh failed on /me for owner %s: %s", owner.id, exc
-        )
-        db.rollback()
+async def get_me(
+    request: Request,
+    owner: Owner = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    # Only geocode when home coords are missing — never block cold start on Nominatim.
+    if owner.latitude is None or owner.longitude is None:
+        try:
+            sync_owner_home_from_address(owner)
+            db.commit()
+            db.refresh(owner)
+        except Exception as exc:  # pragma: no cover - never block profile
+            logging.getLogger(__name__).warning(
+                "Home geocode refresh failed on /me for owner %s: %s", owner.id, exc
+            )
+            db.rollback()
 
     map_center: MemberLocationResponse | None = None
     if owner.latitude is not None and owner.longitude is not None:
@@ -467,7 +478,9 @@ async def get_me(owner: Owner = Depends(require_auth), db: Session = Depends(get
         account_owner_id=owner.account_owner_id or owner.id,
         address=owner.address,
         phone=owner.phone,
-        avatar_url=getattr(owner, "avatar_url", None),
+        avatar_url=client_avatar_url(
+            str(request.base_url), owner.id, getattr(owner, "avatar_url", None)
+        ),
         map_center=map_center,
         active=owner.active,
         expired=owner.expired,
@@ -494,19 +507,27 @@ class AvatarUploadRequest(BaseModel):
     description=(
         "Accept a profile photo (data URL or base64), compress it, and persist "
         "it on the authenticated owner. Prefers an optional Catbox upload when "
-        "CATBOX_USERHASH is configured; otherwise stores a compressed data URL."
+        "CATBOX_USERHASH is configured; otherwise stores a compressed data URL. "
+        "The JSON response returns a thin /owners/{id}/avatar URL (never a data URL)."
     ),
 )
 async def upload_my_avatar(
+    request: Request,
     payload: AvatarUploadRequest,
     owner: Owner = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
-    url = await upload_avatar_image(payload.image)
-    owner.avatar_url = url
+    stored = await upload_avatar_image(payload.image)
+    owner.avatar_url = stored
     db.commit()
     db.refresh(owner)
-    return success_response({"avatar_url": url})
+    return success_response(
+        {
+            "avatar_url": client_avatar_url(
+                str(request.base_url), owner.id, owner.avatar_url
+            )
+        }
+    )
 
 
 @router.post(

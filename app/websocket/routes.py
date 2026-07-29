@@ -13,6 +13,7 @@ Server sends **`type`** + **`data`** envelopes. Common **`type`** values:
 - **`guest_is_here`**, **`unexpected_guest`**, **`GUEST_REQUEST_CHANGED`**
 - **`BLOCKS_CHANGED`** — block-rule create/delete for the owning user
 - **`SESSION_REVOKED`** — another device claimed the account session
+- **`MEMBER_PRESENCE`** — `{ owner_id, online }` when a member connects/disconnects
 - **`LOCATION_UPDATE_ACK`** — ack after a successful **`LOCATION_UPDATE`**
 - **`guest_zone_message`** — legacy **`POST /api/guest/messages`** push
 """
@@ -108,6 +109,13 @@ async def _zone_websocket_session(websocket: WebSocket) -> None:
 
     logger.info("WebSocket auth succeeded: user_id=%s", user_id)
     connection_id = await ws_manager.connect(user_id, websocket)
+    if ws_manager.count_connections_for_user(user_id) == 1:
+        try:
+            from app.services.member_presence_service import publish_member_presence
+
+            await publish_member_presence(int(user_id), True)
+        except Exception:
+            logger.exception("Failed to publish online presence: user_id=%s", user_id)
     try:
         while True:
             raw_message = await websocket.receive_text()
@@ -169,7 +177,20 @@ async def _zone_websocket_session(websocket: WebSocket) -> None:
         except Exception:
             pass
     finally:
-        await ws_manager.disconnect(connection_id)
+        disconnected_user = await ws_manager.disconnect(connection_id)
+        if (
+            disconnected_user
+            and ws_manager.count_connections_for_user(disconnected_user) == 0
+        ):
+            try:
+                from app.services.member_presence_service import publish_member_presence
+
+                await publish_member_presence(int(disconnected_user), False)
+            except Exception:
+                logger.exception(
+                    "Failed to publish offline presence: user_id=%s",
+                    disconnected_user,
+                )
 
 
 @router.websocket("/ws")

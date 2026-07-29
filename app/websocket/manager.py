@@ -29,17 +29,17 @@ class WebSocketManager:
         async with self._lock:
             self._connections[connection_id] = ConnectionState(
                 connection_id=connection_id,
-                user_id=user_id,
+                user_id=str(user_id),
                 websocket=websocket,
             )
         logger.info("WebSocket connected: connection_id=%s user_id=%s", connection_id, user_id)
         return connection_id
 
-    async def disconnect(self, connection_id: str) -> None:
+    async def disconnect(self, connection_id: str) -> str | None:
         async with self._lock:
             state = self._connections.pop(connection_id, None)
             if not state:
-                return
+                return None
             for zone_id in state.zone_ids:
                 subscribers = self._zone_subscribers.get(zone_id)
                 if not subscribers:
@@ -47,7 +47,18 @@ class WebSocketManager:
                 subscribers.discard(connection_id)
                 if not subscribers:
                     self._zone_subscribers.pop(zone_id, None)
+            user_id = state.user_id
         logger.info("WebSocket disconnected: connection_id=%s", connection_id)
+        return user_id
+
+    def is_user_connected(self, user_id: str | int) -> bool:
+        """Best-effort presence check (no lock; fine for display)."""
+        uid = str(user_id)
+        return any(state.user_id == uid for state in self._connections.values())
+
+    def count_connections_for_user(self, user_id: str | int) -> int:
+        uid = str(user_id)
+        return sum(1 for state in self._connections.values() if state.user_id == uid)
 
     async def subscribe(self, connection_id: str, zone_ids: list[str]) -> set[str]:
         normalized = {str(zone_id).strip() for zone_id in zone_ids if str(zone_id).strip()}

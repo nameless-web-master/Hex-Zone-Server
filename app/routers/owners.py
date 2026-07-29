@@ -1,5 +1,6 @@
 """Router for Owner/User endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.schemas import (
@@ -25,6 +26,7 @@ from app.services.account_type_policy import (
     assert_owner_may_edit_network_id,
 )
 from app.services.member_join_welcome_service import notify_members_of_new_join
+from app.services.avatar_upload_service import avatar_bytes_and_media_type
 router = APIRouter(prefix="/owners", tags=["owners"])
 
 
@@ -174,17 +176,87 @@ async def issue_owners_registration_code(db: Session = Depends(get_db)):
     },
 )
 async def get_current_owner(
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get current authenticated owner."""
+    from app.services.avatar_upload_service import client_avatar_url
+
     owner = owner_crud.get_owner(db, current_user["user_id"])
     if not owner:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
-    return OwnerDetailResponse.model_validate(_normalize_owner_name(owner))
+    payload = OwnerDetailResponse.model_validate(_normalize_owner_name(owner)).model_dump()
+    payload["avatar_url"] = client_avatar_url(
+        str(request.base_url), owner.id, getattr(owner, "avatar_url", None)
+    )
+    return OwnerDetailResponse(**payload)
+
+
+@router.get(
+    "/{owner_id}/avatar",
+    summary="Get owner avatar image",
+    description="Returns the owner's profile image bytes (or redirects to an external avatar URL).",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Avatar not found."},
+        status.HTTP_403_FORBIDDEN: {"description": "Not authorized to view this avatar."},
+    },
+)
+async def get_owner_avatar(
+    owner_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    caller = owner_crud.get_owner(db, current_user["user_id"])
+    if not caller:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caller not found")
+    # Authenticated members may load any profile avatar for inbox display.
+    owner = owner_crud.get_owner(db, owner_id)
+    if not owner:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Owner not found")
+    raw = (getattr(owner, "avatar_url", None) or "").strip()
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
+    # Proxy external hosts (e.g. Catbox) so mobile auth-fetch gets image bytes
+    # instead of relying on RN Image loading third-party URLs.
+    if raw.startswith("http://") or raw.startswith("https://"):
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=20.0,
+                follow_redirects=True,
+                headers={"User-Agent": "SafeZonePatrol/1.0 (+avatar-fetch)"},
+            ) as client:
+                upstream = await client.get(raw)
+                upstream.raise_for_status()
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Avatar not found",
+            ) from None
+        media_type = upstream.headers.get("content-type") or "image/jpeg"
+        if ";" in media_type:
+            media_type = media_type.split(";", 1)[0].strip()
+        if not media_type.startswith("image/"):
+            media_type = "image/jpeg"
+        return Response(
+            content=upstream.content,
+            media_type=media_type,
+            headers={"Cache-Control": "private, max-age=300"},
+        )
+    decoded = avatar_bytes_and_media_type(raw)
+    if not decoded:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
+    data, media_type = decoded
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 @router.get(
@@ -204,6 +276,7 @@ async def get_current_owner(
 )
 async def get_owner(
     owner_id: int,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -227,7 +300,13 @@ async def get_owner(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
-    return OwnerDetailResponse.model_validate(_normalize_owner_name(owner))
+    from app.services.avatar_upload_service import client_avatar_url
+
+    payload = OwnerDetailResponse.model_validate(_normalize_owner_name(owner)).model_dump()
+    payload["avatar_url"] = client_avatar_url(
+        str(request.base_url), owner.id, getattr(owner, "avatar_url", None)
+    )
+    return OwnerDetailResponse(**payload)
 
 
 @router.get(

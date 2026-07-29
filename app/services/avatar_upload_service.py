@@ -164,3 +164,44 @@ async def upload_avatar_image(raw_image: str) -> str:
         logger.info("Catbox upload skipped/failed; storing compressed data URL")
 
     return data_url
+
+
+def owner_has_avatar(avatar_url: str | None) -> bool:
+    return bool(avatar_url and str(avatar_url).strip())
+
+
+def client_avatar_url(base_url: str, owner_id: int, avatar_url: str | None) -> str | None:
+    """Never embed data: or third-party host URLs in JSON profiles.
+
+    Mobile clients fetch GET /owners/{id}/avatar with auth and cache the bytes.
+    Returning catbox/https directly often fails to paint in React Native Image.
+    """
+    raw = (avatar_url or "").strip()
+    if not raw:
+        return None
+    base = (base_url or "").rstrip("/")
+    return f"{base}/owners/{int(owner_id)}/avatar"
+
+
+def avatar_bytes_and_media_type(avatar_url: str | None) -> tuple[bytes, str] | None:
+    """Decode a stored avatar into raw bytes for HTTP image responses."""
+    raw = (avatar_url or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("data:"):
+        match = re.match(
+            r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$",
+            raw,
+            flags=re.DOTALL,
+        )
+        if not match:
+            return None
+        mime = match.group(1).lower()
+        try:
+            data = base64.b64decode(match.group(2), validate=False)
+        except Exception:
+            return None
+        if not data:
+            return None
+        return data, mime if mime != "image/jpg" else "image/jpeg"
+    return None

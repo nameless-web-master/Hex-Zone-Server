@@ -74,26 +74,47 @@ def assert_account_type_change_allowed(
     target: Owner,
     new_account_type: str,
 ) -> None:
-    """Validate a system-administrator account-type assignment."""
-    assert_system_administrator_may_set_account_type(caller)
+    """Validate an account-type assignment.
 
+    - System administrators (Private) may assign any tier to others (Private only
+      to administrators) and may change their own tier.
+    - Other administrators may change only their own tier, and never to Private.
+    """
     new_key = normalize_pricing_tier_key(new_account_type)
     current_key = normalize_pricing_tier_key(target.account_type.value)
     if new_key == current_key:
         return
 
-    if (
-        is_system_administrator(target)
-        and new_key != PRICING_TIER_PRIVATE
-        and count_system_administrators(db) <= 1
-    ):
+    if is_system_administrator(caller):
+        if (
+            is_system_administrator(target)
+            and new_key != PRICING_TIER_PRIVATE
+            and count_system_administrators(db) <= 1
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot change account type: at least one system administrator is required.",
+            )
+        if new_key == PRICING_TIER_PRIVATE and target.role.value != "administrator":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Only administrator accounts may be assigned the Private (system) account type.",
+            )
+        return
+
+    # Non–system-admin: only self-service among non-Private tiers.
+    if caller.id != target.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot change account type: at least one system administrator is required.",
+            detail="Only system administrators may change other users' account types.",
         )
-
-    if new_key == PRICING_TIER_PRIVATE and target.role.value != "administrator":
+    if caller.role.value != "administrator":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only administrator accounts may be assigned the Private (system) account type.",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators may change account type.",
+        )
+    if new_key == PRICING_TIER_PRIVATE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Private is reserved for system administrators.",
         )

@@ -122,7 +122,7 @@ def test_system_admin_can_promote_administrator_to_private(db):
     assert member.account_type == AccountType.PRIVATE
 
 
-def test_non_system_admin_cannot_change_account_type(db):
+def test_non_system_admin_cannot_change_other_users_account_type(db):
     regular_admin = _owner(
         db,
         email="regular-admin@example.com",
@@ -146,6 +146,33 @@ def test_non_system_admin_cannot_change_account_type(db):
             regular_admin,
             user,
             AccountType.EXCLUSIVE.value,
+        )
+    assert exc.value.status_code == 403
+
+
+def test_non_system_admin_can_change_own_account_type_except_private(db):
+    regular_admin = _owner(
+        db,
+        email="regular-admin@example.com",
+        zone_id="regular-zone",
+        account_type=AccountType.EXCLUSIVE,
+        role=OwnerRole.ADMINISTRATOR,
+    )
+    db.commit()
+
+    assert_account_type_change_allowed(
+        db,
+        regular_admin,
+        regular_admin,
+        AccountType.ENHANCED.value,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        assert_account_type_change_allowed(
+            db,
+            regular_admin,
+            regular_admin,
+            AccountType.PRIVATE.value,
         )
     assert exc.value.status_code == 403
 

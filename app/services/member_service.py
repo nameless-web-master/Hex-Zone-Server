@@ -7,6 +7,7 @@ from app.models import Device, MemberLocation, Owner, PushToken, Zone
 from app.services.access_policy import messaging_visible_owner_ids
 from app.services.geospatial_service import evaluate_member_zones
 from app.services.zone_membership_service import refresh_owner_memberships
+from app.websocket.manager import ws_manager
 
 
 def set_member_live_position(
@@ -74,6 +75,13 @@ def list_members(db: Session, owner: Owner, active: bool | None = None) -> list[
                 .first()
             )
         zones = db.query(Zone.zone_id).filter(Zone.owner_id == member.id).all()
+        # Prefer live WebSocket presence; fall back to device flag.
+        online = ws_manager.is_user_connected(member.id) or (
+            db.query(Device.id)
+            .filter(Device.owner_id == member.id, Device.is_online.is_(True))
+            .first()
+            is not None
+        )
         output.append(
             {
                 "id": str(member.id),
@@ -87,7 +95,13 @@ def list_members(db: Session, owner: Owner, active: bool | None = None) -> list[
                 "address": member.address,
                 "zone_id": member.zone_id,
                 "active": member.active,
-                "avatar_url": getattr(member, "avatar_url", None) or None,
+                "online": online,
+                # Never embed data: URLs here — clients fetch GET /owners/{id}/avatar.
+                "avatar_url": (
+                    None
+                    if not (getattr(member, "avatar_url", None) or "").strip()
+                    else f"/owners/{member.id}/avatar"
+                ),
                 "location": None
                 if not location
                 else {"latitude": location.latitude, "longitude": location.longitude},

@@ -120,9 +120,17 @@ def update_owner(db: Session, owner_id: int, owner_update: OwnerUpdate) -> Optio
         update_data["email"] = update_data["email"].strip().lower()
     if "avatar_url" in update_data:
         raw_avatar = update_data["avatar_url"]
-        update_data["avatar_url"] = (
-            None if raw_avatar is None or str(raw_avatar).strip() == "" else str(raw_avatar)
-        )
+        if raw_avatar is None or str(raw_avatar).strip() == "":
+            update_data["avatar_url"] = None
+        else:
+            value = str(raw_avatar).strip()
+            # Clients receive thin /owners/{id}/avatar URLs for display. Never
+            # persist those back — they would replace the real Catbox/data URL.
+            path = value.split("?", 1)[0].rstrip("/")
+            if path.endswith("/avatar") and "/owners/" in path:
+                update_data.pop("avatar_url")
+            else:
+                update_data["avatar_url"] = value
     for field, value in update_data.items():
         setattr(db_owner, field, value)
 
