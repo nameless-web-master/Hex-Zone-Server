@@ -135,6 +135,9 @@ class Settings(BaseSettings):
     WELLNESS_REMINDER_SCAN_INTERVAL_SECONDS: int = 120
     WELLNESS_REMINDER_LOOKBACK_HOURS: int = 24
 
+    # Outbound POST timeout when delivering alarms to owners.sn_webhook hubs.
+    SMART_HOME_WEBHOOK_TIMEOUT_SECONDS: float = 5.0
+
     # Registration code HMAC + email delivery (administrator self-service signup).
     # When REGISTRATION_CODE_HMAC_SECRET is empty, the runtime falls back to SECRET_KEY.
     REGISTRATION_CODE_HMAC_SECRET: str = ""

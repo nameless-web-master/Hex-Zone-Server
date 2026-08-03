@@ -55,6 +55,7 @@ from app.services.message_feature_service import (
 )
 from app.domain.service_pa_topics import ServicePaValidationError
 from app.services import push_notification_service
+from app.services import smart_home_webhook_service
 from app.services import wellness_ack_service
 from app.services import alarm_read_service
 from app.services.member_service import get_owner_live_coordinates, upsert_member_location
@@ -64,7 +65,7 @@ router = APIRouter(prefix="/message-feature", tags=["message-feature"])
 
 
 async def _finalize_geo_propagation(db: Session, result: dict) -> dict:
-    """WebSocket + optional mobile push after DB commit."""
+    """WebSocket + mobile push + smart-home webhooks after DB commit."""
     if result.get("skipped"):
         return result
 
@@ -80,6 +81,13 @@ async def _finalize_geo_propagation(db: Session, result: dict) -> dict:
         push_stats = await push_notification_service.send_alarm_push_to_owners(db, delivered, result)
         result.update(push_stats)
         push_notification_service.schedule_panic_retries_if_needed(delivered, result, push_stats)
+        # Deliver to each recipient/sender hub that configured sn_webhook.
+        webhook_stats = await smart_home_webhook_service.send_smart_home_webhooks(
+            db,
+            ws_recipients,
+            result,
+        )
+        result.update(webhook_stats)
     return result
 
 

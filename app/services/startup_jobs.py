@@ -30,6 +30,7 @@ from app.models import Owner
 from app.models.wellness_check_acknowledgement import WellnessCheckAcknowledgement
 from app.models.zone_message_event import ZoneMessageEvent
 from app.services import push_notification_service
+from app.services import smart_home_webhook_service
 from app.services.owner_home_service import sync_owner_home_from_address
 
 logger = logging.getLogger(__name__)
@@ -175,9 +176,16 @@ def _scan_wellness_reminders_once(db: Session) -> int:
         reminder_no = reminders_sent + 1
         payload = _wellness_reminder_payload(event, reminder_no)
         try:
-            stats = asyncio.run(
-                push_notification_service.send_alarm_push_to_owners(db, pending, payload)
-            )
+            async def _deliver() -> dict:
+                push_stats = await push_notification_service.send_alarm_push_to_owners(
+                    db, pending, payload
+                )
+                webhook_stats = await smart_home_webhook_service.send_smart_home_webhooks(
+                    db, pending, payload
+                )
+                return {**push_stats, **webhook_stats}
+
+            stats = asyncio.run(_deliver())
         except Exception:  # pragma: no cover - never crash the worker thread
             logger.exception("Wellness reminder push failed for event %s", event.id)
             continue

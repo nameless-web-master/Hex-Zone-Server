@@ -154,6 +154,18 @@ class PropagationMessageResponse(BaseModel):
     metadata: dict | None = None
     push_sent: int | None = None
     push_failed: int | None = None
+    webhook_sent: int | None = Field(
+        default=None,
+        description="Smart-home webhook POSTs that returned HTTP success.",
+    )
+    webhook_failed: int | None = Field(
+        default=None,
+        description="Smart-home webhook POSTs that failed or returned HTTP errors.",
+    )
+    webhook_targets: int | None = Field(
+        default=None,
+        description="Owners with a configured sn_webhook that were targeted.",
+    )
     priority: str | None = Field(
         default=None,
         description="Delivery priority: MAX | HIGH | MEDIUM | LOW.",
