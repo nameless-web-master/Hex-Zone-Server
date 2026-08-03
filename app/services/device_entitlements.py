@@ -20,6 +20,18 @@ DEVICE_LIMITS_BY_ACCOUNT_TYPE: dict[str, int | None] = {
 }
 
 
+def is_client_session_hid(hid: str | None) -> bool:
+    """Phone (MOB-) and browser (WEB-) login sessions — not smart-home hubs."""
+    normalized = str(hid or "").strip().upper()
+    return normalized.startswith(("MOB-", "WEB-"))
+
+
+def is_smart_home_hid(hid: str | None) -> bool:
+    """Dedicated hub / hardware HID used for smart-home integration."""
+    normalized = str(hid or "").strip().upper()
+    return bool(normalized) and not is_client_session_hid(normalized)
+
+
 # Max number of *user-role* members an administrator may invite under a given
 # account type. ``None`` means unlimited; ``0`` means the tier does not support
 # user members at all.
@@ -84,11 +96,16 @@ def release_other_device_sessions(
     owner_id: int,
     keep_hid: str | None = None,
 ) -> None:
-    """Sign out every other device for this owner so the caller can take over."""
+    """Sign out every other phone/web session so the caller can take over.
+
+    Smart-home hubs are left alone — they are not login sessions.
+    """
     expire_stale_device_sessions(db, owner_id)
     normalized_keep = str(keep_hid).strip().upper() if keep_hid else None
     devices = device_crud.list_devices(db, owner_id=owner_id)
     for device in devices:
+        if not is_client_session_hid(device.hid):
+            continue
         if normalized_keep and str(device.hid).strip().upper() == normalized_keep:
             continue
         if device.is_online:
@@ -101,12 +118,20 @@ def assert_no_conflicting_online_session(
     owner_id: int,
     enrolling_hid: str,
 ) -> None:
-    """Reject enrollment when another device for this owner is still online."""
+    """Reject client-session enrollment when another phone/web session is online.
+
+    Smart-home hubs (non MOB-/WEB- HIDs) do not participate in the single
+    login-session lock — they can be registered while a phone is signed in.
+    """
+    if not is_client_session_hid(enrolling_hid):
+        return
     expire_stale_device_sessions(db, owner_id)
     devices = device_crud.list_devices(db, owner_id=owner_id)
     normalized_hid = str(enrolling_hid).strip().upper()
     for device in devices:
         if str(device.hid).strip().upper() == normalized_hid:
+            continue
+        if not is_client_session_hid(device.hid):
             continue
         if device_presence_is_active(device):
             raise HTTPException(
@@ -122,30 +147,44 @@ def _device_recency(device) -> datetime:
     return datetime.min
 
 
+def count_smart_home_devices(db: Session, owner_id: int) -> int:
+    """Count registered smart-home hubs (excludes MOB-/WEB- login clients)."""
+    devices = device_crud.list_devices(db, owner_id=owner_id)
+    return sum(1 for device in devices if is_smart_home_hid(device.hid))
+
+
 def evict_offline_devices_to_make_room(db: Session, owner: Owner) -> None:
-    """Remove oldest offline devices until the owner is under their tier cap."""
+    """Remove oldest offline smart-home hubs until under the tier cap.
+
+    Phone/web login clients (MOB-/WEB-) never count toward the smart-home
+    capacity and are never evicted by this helper.
+    """
     expire_stale_device_sessions(db, owner.id)
     max_devices = max_devices_for_account_type(owner.account_type.value)
     if max_devices is None:
         return
-    devices = device_crud.list_devices(db, owner_id=owner.id)
-    while len(devices) >= max_devices:
-        offline = [device for device in devices if not device.is_online]
+    smart_homes = [
+        device
+        for device in device_crud.list_devices(db, owner_id=owner.id)
+        if is_smart_home_hid(device.hid)
+    ]
+    while len(smart_homes) >= max_devices:
+        offline = [device for device in smart_homes if not device.is_online]
         if not offline:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
                     f"Account type '{owner.account_type.value}' allows at most "
-                    f"{max_devices} device(s) per owner"
+                    f"{max_devices} smart-home device(s) per owner"
                 ),
             )
         oldest = min(offline, key=_device_recency)
         device_crud.delete_device(db, oldest.id, owner_id=owner.id)
-        devices = [device for device in devices if device.id != oldest.id]
+        smart_homes = [device for device in smart_homes if device.id != oldest.id]
 
 
 def assert_owner_device_capacity(owner: Owner, current_device_count: int) -> None:
-    """Ensure owner has capacity to enroll another device."""
+    """Ensure owner has capacity to enroll another smart-home device."""
     max_devices = max_devices_for_account_type(owner.account_type.value)
     if max_devices is None:
         return
@@ -154,7 +193,7 @@ def assert_owner_device_capacity(owner: Owner, current_device_count: int) -> Non
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
                 f"Account type '{owner.account_type.value}' allows at most "
-                f"{max_devices} device(s) per owner"
+                f"{max_devices} smart-home device(s) per owner"
             ),
         )
 

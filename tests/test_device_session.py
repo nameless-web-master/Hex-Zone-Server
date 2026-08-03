@@ -12,6 +12,8 @@ from app.schemas.schemas import DeviceCreate
 from app.services.device_entitlements import (
     device_presence_is_active,
     expire_stale_device_sessions,
+    is_client_session_hid,
+    is_smart_home_hid,
     release_other_device_sessions,
 )
 from sqlalchemy import create_engine
@@ -54,15 +56,24 @@ def test_release_other_device_sessions_marks_others_offline(test_db):
         owner_id,
         DeviceCreate(hid="MOB-BBBB2222", name="Child phone", is_online=True),
     )
+    hub = device_crud.create_device(
+        test_db,
+        owner_id,
+        DeviceCreate(hid="DEV-HUB001", name="Smart home", is_online=True),
+    )
     test_db.commit()
 
     release_other_device_sessions(test_db, owner_id, keep_hid="MOB-BBBB2222")
     test_db.commit()
     test_db.refresh(first)
     test_db.refresh(second)
+    test_db.refresh(hub)
 
     assert first.is_online is False
     assert second.is_online is True
+    assert hub.is_online is True
+    assert is_smart_home_hid(hub.hid) is True
+    assert is_client_session_hid(first.hid) is True
 
 
 def test_expire_stale_device_sessions(test_db):

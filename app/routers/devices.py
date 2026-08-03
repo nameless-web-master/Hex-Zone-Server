@@ -18,8 +18,10 @@ from app.services.access_policy import visible_owner_ids
 from app.services.device_entitlements import (
     assert_no_conflicting_online_session,
     assert_owner_device_capacity,
+    count_smart_home_devices,
     evict_offline_devices_to_make_room,
     expire_stale_device_sessions,
+    is_client_session_hid,
     release_other_device_sessions,
 )
 from app.websocket.manager import ws_manager
@@ -43,9 +45,10 @@ def _caller_visibility(db: Session, user_id: int) -> list[int]:
     status_code=status.HTTP_201_CREATED,
     summary="Create device",
     description=(
-        "Create a device under the authenticated owner account. Device enrollment "
-        "capacity is enforced by account tier: private/exclusive/enhanced=1, "
-        "private_plus=10, enhanced_plus=unlimited."
+        "Create a device under the authenticated owner account. Smart-home "
+        "enrollment capacity (non MOB-/WEB- HIDs) is enforced by account tier: "
+        "private/exclusive/enhanced=1, private_plus=10, enhanced_plus=unlimited. "
+        "Phone and browser login clients (MOB-/WEB-) do not consume that quota."
     ),
     responses={
         status.HTTP_404_NOT_FOUND: {
@@ -72,9 +75,10 @@ async def create_device(
         )
     try:
         assert_no_conflicting_online_session(db, owner.id, device.hid)
-        evict_offline_devices_to_make_room(db, owner)
-        current_count = device_crud.count_devices(db, owner.id)
-        assert_owner_device_capacity(owner, current_count)
+        if not is_client_session_hid(device.hid):
+            # Capacity applies to smart-home hubs only.
+            evict_offline_devices_to_make_room(db, owner)
+            assert_owner_device_capacity(owner, count_smart_home_devices(db, owner.id))
         db_device = device_crud.create_device(db, current_user["user_id"], device)
         db.commit()
     except IntegrityError as exc:
@@ -194,6 +198,7 @@ async def claim_device_session(
         device
         for device in before
         if device.is_online
+        and is_client_session_hid(device.hid)
         and (
             not payload.hid
             or str(device.hid).strip().upper()
@@ -201,6 +206,7 @@ async def claim_device_session(
         )
     ]
     release_other_device_sessions(db, owner.id, keep_hid=payload.hid)
+    # Only reclaim smart-home capacity slots; never deletes MOB-/WEB- clients.
     evict_offline_devices_to_make_room(db, owner)
     db.commit()
     kept_hid = str(payload.hid).strip() if payload.hid else None
