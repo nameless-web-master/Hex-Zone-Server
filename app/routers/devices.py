@@ -171,50 +171,36 @@ async def list_devices(
     response_model=DeviceClaimSessionResponse,
     summary="Claim device session",
     description=(
-        "Sign out other devices for the authenticated owner so this device can "
-        "take over the account session. Use when logging in on a new phone."
+        "Remove other phone/web login devices for the authenticated owner so "
+        "this device can take over the account session. Smart-home hubs are "
+        "not deleted. Use when the user confirms device takeover on login."
     ),
     responses={
         status.HTTP_404_NOT_FOUND: {
             "description": "Authenticated owner was not found.",
         },
     },
-    response_description="Count of other devices that were signed out.",
+    response_description="Count of other login devices that were removed.",
 )
 async def claim_device_session(
     payload: DeviceClaimSessionRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Release other online sessions for the current owner."""
+    """Delete other phone/web login sessions for the current owner."""
     owner = owner_crud.get_owner(db, current_user["user_id"])
     if not owner:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner not found",
         )
-    before = device_crud.list_devices(db, owner_id=owner.id)
-    online_others = [
-        device
-        for device in before
-        if device.is_online
-        and is_client_session_hid(device.hid)
-        and (
-            not payload.hid
-            or str(device.hid).strip().upper()
-            != str(payload.hid).strip().upper()
-        )
-    ]
-    release_other_device_sessions(db, owner.id, keep_hid=payload.hid)
-    # Only reclaim smart-home capacity slots; never deletes MOB-/WEB- clients.
+    released_hids = release_other_device_sessions(
+        db, owner.id, keep_hid=payload.hid
+    )
+    # Only reclaim smart-home capacity slots; login clients were already removed.
     evict_offline_devices_to_make_room(db, owner)
     db.commit()
     kept_hid = str(payload.hid).strip() if payload.hid else None
-    released_hids = [
-        str(device.hid).strip()
-        for device in online_others
-        if device.hid is not None and str(device.hid).strip()
-    ]
     if released_hids:
         await ws_manager.broadcast_to_users(
             [owner.id],
@@ -225,7 +211,7 @@ async def claim_device_session(
                 "reason": "device_claim_session",
             },
         )
-    return DeviceClaimSessionResponse(released=len(online_others))
+    return DeviceClaimSessionResponse(released=len(released_hids))
 
 
 @router.post(

@@ -278,7 +278,7 @@ class DeviceClaimSessionResponse(BaseModel):
 
     released: int = Field(
         ...,
-        description="Number of other devices signed out for this owner.",
+        description="Number of other phone/web login devices removed for this owner.",
     )
 
 

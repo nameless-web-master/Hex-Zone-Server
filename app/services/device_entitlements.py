@@ -95,22 +95,26 @@ def release_other_device_sessions(
     db: Session,
     owner_id: int,
     keep_hid: str | None = None,
-) -> None:
-    """Sign out every other phone/web session so the caller can take over.
+) -> list[str]:
+    """Delete every other phone/web login session so the caller can take over.
 
     Smart-home hubs are left alone — they are not login sessions.
+    Returns the HID list of removed client sessions (for SESSION_REVOKED).
     """
     expire_stale_device_sessions(db, owner_id)
     normalized_keep = str(keep_hid).strip().upper() if keep_hid else None
     devices = device_crud.list_devices(db, owner_id=owner_id)
+    released: list[str] = []
     for device in devices:
         if not is_client_session_hid(device.hid):
             continue
         if normalized_keep and str(device.hid).strip().upper() == normalized_keep:
             continue
-        if device.is_online:
-            device.is_online = False
-            db.flush()
+        hid = str(device.hid).strip() if device.hid else ""
+        device_crud.delete_device(db, device.id, owner_id=owner_id)
+        if hid:
+            released.append(hid)
+    return released
 
 
 def assert_no_conflicting_online_session(

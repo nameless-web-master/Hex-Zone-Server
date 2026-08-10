@@ -44,13 +44,14 @@ def test_stale_online_device_is_not_active():
     assert device_presence_is_active(device) is False
 
 
-def test_release_other_device_sessions_marks_others_offline(test_db):
+def test_release_other_device_sessions_deletes_other_login_clients(test_db):
     owner_id = 1
     first = device_crud.create_device(
         test_db,
         owner_id,
         DeviceCreate(hid="MOB-AAAA1111", name="Parent phone", is_online=True),
     )
+    first_id = first.id
     second = device_crud.create_device(
         test_db,
         owner_id,
@@ -63,17 +64,45 @@ def test_release_other_device_sessions_marks_others_offline(test_db):
     )
     test_db.commit()
 
-    release_other_device_sessions(test_db, owner_id, keep_hid="MOB-BBBB2222")
+    released = release_other_device_sessions(
+        test_db, owner_id, keep_hid="MOB-BBBB2222"
+    )
     test_db.commit()
-    test_db.refresh(first)
     test_db.refresh(second)
     test_db.refresh(hub)
 
-    assert first.is_online is False
+    assert "MOB-AAAA1111" in released
+    assert device_crud.get_device(test_db, first_id, owner_id=owner_id) is None
     assert second.is_online is True
     assert hub.is_online is True
     assert is_smart_home_hid(hub.hid) is True
-    assert is_client_session_hid(first.hid) is True
+    assert is_client_session_hid(second.hid) is True
+
+
+def test_release_other_device_sessions_removes_offline_login_clients(test_db):
+    owner_id = 1
+    offline = device_crud.create_device(
+        test_db,
+        owner_id,
+        DeviceCreate(hid="WEB-OLD00001", name="Old browser", is_online=False),
+    )
+    offline_id = offline.id
+    keep = device_crud.create_device(
+        test_db,
+        owner_id,
+        DeviceCreate(hid="MOB-KEEP9999", name="New phone", is_online=True),
+    )
+    test_db.commit()
+
+    released = release_other_device_sessions(
+        test_db, owner_id, keep_hid="MOB-KEEP9999"
+    )
+    test_db.commit()
+    test_db.refresh(keep)
+
+    assert "WEB-OLD00001" in released
+    assert device_crud.get_device(test_db, offline_id, owner_id=owner_id) is None
+    assert keep.is_online is True
 
 
 def test_expire_stale_device_sessions(test_db):
