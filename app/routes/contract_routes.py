@@ -25,7 +25,11 @@ from app.services.access_policy import can_message_owner
 from app.services import message_block_service
 from app.services.account_type_policy import assert_owner_may_edit_network_id
 from app.services.owner_home_service import apply_owner_home_geocode, sync_owner_home_from_address
-from app.services.avatar_upload_service import client_avatar_url, upload_avatar_image
+from app.services.avatar_upload_service import (
+    client_avatar_url,
+    upload_avatar_image,
+    upload_chat_image,
+)
 
 router = APIRouter(tags=["contract"])
 
@@ -200,6 +204,10 @@ class ChatMessageCreateRequest(BaseModel):
         description="Required when visibility is private; omitted for public",
     )
     guest_id: str | None = Field(default=None, max_length=36)
+    msg: dict | None = Field(
+        default=None,
+        description="Optional structured payload (broadcast_name, images).",
+    )
     zone_id: str | None = Field(
         default=None,
         min_length=1,
@@ -531,6 +539,24 @@ async def upload_my_avatar(
 
 
 @router.post(
+    "/me/media",
+    summary="Upload a chat image",
+    description=(
+        "Accept a photo (data URL or base64), compress it, and return a persistable "
+        "URL to embed in a message. Does not change the owner's profile avatar. "
+        "Maximum 5 images per message (enforced by clients)."
+    ),
+)
+async def upload_my_media(
+    payload: AvatarUploadRequest,
+    owner: Owner = Depends(require_auth),
+):
+    del owner  # auth only
+    url = await upload_chat_image(payload.image)
+    return success_response({"url": url})
+
+
+@router.post(
     "/zones",
     status_code=status.HTTP_201_CREATED,
     response_model=ContractSuccessAnyResponse,
@@ -709,6 +735,7 @@ async def post_messages(
             guest_id=chat_payload.guest_id.strip(),
             text=chat_payload.message,
             msg_type=chat_payload.type or "",
+            msg=chat_payload.msg if isinstance(chat_payload.msg, dict) else None,
         )
         if isinstance(guest_result, dict):
             code = guest_result.get("__reject__")
@@ -751,6 +778,7 @@ async def post_messages(
         visibility=chat_payload.visibility,
         type=chat_payload.type,
         receiver_id=chat_payload.receiver_id,
+        msg=chat_payload.msg if isinstance(chat_payload.msg, dict) else None,
     )
     try:
         derived_scope = type_scope(normalize_message_type(normalized_chat_payload.type or ""))

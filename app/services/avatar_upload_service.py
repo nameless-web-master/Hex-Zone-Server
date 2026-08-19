@@ -26,7 +26,10 @@ CATBOX_UPLOAD_URL = "https://catbox.moe/user/api.php"
 MAX_INPUT_BYTES = 2_500_000
 MAX_STORED_DATA_URL_CHARS = 320_000
 MAX_AVATAR_EDGE_PX = 512
+MAX_CHAT_EDGE_PX = 1280
+MAX_CHAT_DATA_URL_CHARS = 700_000
 JPEG_QUALITY = 78
+CHAT_JPEG_QUALITY = 72
 
 
 def parse_image_payload(raw: str) -> Tuple[bytes, str]:
@@ -76,17 +79,20 @@ def parse_image_payload(raw: str) -> Tuple[bytes, str]:
     return data, "image/jpeg" if mime == "image/jpg" else mime
 
 
-def compress_avatar_to_data_url(data: bytes) -> str:
+def compress_to_jpeg_data_url(
+    data: bytes,
+    *,
+    max_edge_px: int,
+    quality: int,
+    max_chars: int,
+) -> str:
     """Resize/compress to a JPEG data URL suitable for DB + mobile Image."""
     try:
         with Image.open(io.BytesIO(data)) as img:
             img = img.convert("RGB")
-            img.thumbnail(
-                (MAX_AVATAR_EDGE_PX, MAX_AVATAR_EDGE_PX),
-                Image.Resampling.LANCZOS,
-            )
+            img.thumbnail((max_edge_px, max_edge_px), Image.Resampling.LANCZOS)
             out = io.BytesIO()
-            img.save(out, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+            img.save(out, format="JPEG", quality=quality, optimize=True)
             compressed = out.getvalue()
     except UnidentifiedImageError as exc:
         raise HTTPException(
@@ -94,19 +100,29 @@ def compress_avatar_to_data_url(data: bytes) -> str:
             detail="Could not decode image. Try another photo.",
         ) from exc
     except Exception as exc:
-        logger.warning("Avatar compress failed: %s", exc)
+        logger.warning("Image compress failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Could not process image. Try another photo.",
         ) from exc
 
     data_url = "data:image/jpeg;base64," + base64.b64encode(compressed).decode("ascii")
-    if len(data_url) > MAX_STORED_DATA_URL_CHARS:
+    if len(data_url) > max_chars:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Image is still too large after compression. Crop tighter and try again.",
         )
     return data_url
+
+
+def compress_avatar_to_data_url(data: bytes) -> str:
+    """Resize/compress to a JPEG data URL suitable for DB + mobile Image."""
+    return compress_to_jpeg_data_url(
+        data,
+        max_edge_px=MAX_AVATAR_EDGE_PX,
+        quality=JPEG_QUALITY,
+        max_chars=MAX_STORED_DATA_URL_CHARS,
+    )
 
 
 async def _try_catbox_upload(jpeg_bytes: bytes, userhash: str) -> str | None:
@@ -150,20 +166,38 @@ def _jpeg_bytes_from_data_url(data_url: str) -> bytes:
     return base64.b64decode(raw)
 
 
-async def upload_avatar_image(raw_image: str) -> str:
-    """Return a persistable avatar URL (hosted HTTPS or data URL)."""
-    data, _mime = parse_image_payload(raw_image)
-    data_url = compress_avatar_to_data_url(data)
-
+async def _persist_compressed_image(data_url: str, *, log_label: str) -> str:
     userhash = (settings.CATBOX_USERHASH or "").strip()
     if userhash:
         hosted = await _try_catbox_upload(_jpeg_bytes_from_data_url(data_url), userhash)
         if hosted:
-            logger.info("Avatar uploaded to Catbox: %s", hosted)
+            logger.info("%s uploaded to Catbox: %s", log_label, hosted)
             return hosted
-        logger.info("Catbox upload skipped/failed; storing compressed data URL")
-
+        logger.info("Catbox upload skipped/failed for %s; storing compressed data URL", log_label)
     return data_url
+
+
+async def upload_avatar_image(raw_image: str) -> str:
+    """Return a persistable avatar URL (hosted HTTPS or data URL)."""
+    data, _mime = parse_image_payload(raw_image)
+    data_url = compress_avatar_to_data_url(data)
+    return await _persist_compressed_image(data_url, log_label="Avatar")
+
+
+async def upload_chat_image(raw_image: str) -> str:
+    """Compress a chat photo and return a data URL.
+
+    Chat photos are painted by React Native ``Image``, which often fails to load
+    third-party hosts (same reason avatars are proxied). Keep a compressed data
+    URL so inbox cards render without a separate media fetch.
+    """
+    data, _mime = parse_image_payload(raw_image)
+    return compress_to_jpeg_data_url(
+        data,
+        max_edge_px=MAX_CHAT_EDGE_PX,
+        quality=CHAT_JPEG_QUALITY,
+        max_chars=MAX_CHAT_DATA_URL_CHARS,
+    )
 
 
 def owner_has_avatar(avatar_url: str | None) -> bool:

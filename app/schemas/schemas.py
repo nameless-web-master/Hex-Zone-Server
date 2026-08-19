@@ -697,6 +697,10 @@ class ZoneMessageResponse(BaseModel):
         default=None,
         description="Display label: zone name plus network id, e.g. `Home District (DISTRICT-11)`.",
     )
+    images: Optional[list[str]] = Field(
+        default=None,
+        description="Up to 5 image URLs attached to the message (https or data URLs).",
+    )
 
     model_config = ConfigDict(
         from_attributes=True,

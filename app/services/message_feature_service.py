@@ -59,6 +59,35 @@ from app.services.owner_home_service import (
 
 logger = logging.getLogger(__name__)
 
+MAX_MESSAGE_IMAGES = 5
+
+
+def sanitize_msg_images(msg: dict) -> dict:
+    """Keep at most 5 http(s) or data-image URLs on ``msg.images``."""
+    if not isinstance(msg, dict):
+        return {}
+    out = dict(msg)
+    raw = out.get("images")
+    if raw is None:
+        return out
+    urls: list[str] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, str):
+                continue
+            token = item.strip()
+            if not token:
+                continue
+            if token.startswith(("https://", "http://", "data:image/")):
+                urls.append(token)
+            if len(urls) >= MAX_MESSAGE_IMAGES:
+                break
+    if urls:
+        out["images"] = urls
+    else:
+        out.pop("images", None)
+    return out
+
 PRIVATE_SEARCH_MIN_QUERY_LEN = 2
 PRIVATE_SEARCH_MAX_RESULTS = 20
 
@@ -588,6 +617,7 @@ def _log_emergency_event(
 
 
 def create_geo_propagated_message(db: Session, sender: Owner, payload: PropagationMessageCreate) -> dict:
+    payload.msg = sanitize_msg_images(payload.msg if isinstance(payload.msg, dict) else {})
     canonical_type = _to_canonical_type(payload.type)
     validate_service_pa_message_fields(canonical_type, payload.msg)
     scope = type_scope(canonical_type)
@@ -708,7 +738,15 @@ def create_geo_propagated_message(db: Session, sender: Owner, payload: Propagati
         scope=scope,
         text=display_text_for_service_pa(payload.msg)
         if canonical_type in (CanonicalMessageType.PA, CanonicalMessageType.SERVICE)
-        else str(payload.msg.get("description") or payload.msg.get("title") or payload.type.value),
+        else str(
+            payload.msg.get("description")
+            or payload.msg.get("title")
+            or (
+                ""
+                if isinstance(payload.msg.get("images"), list) and payload.msg.get("images")
+                else payload.type.value
+            )
+        ),
         body_json=payload.msg,
         metadata_json=metadata,
         created_at=datetime.utcnow(),
@@ -760,6 +798,7 @@ def create_network_guest_geo_propagated_message(
         raise ValueError("No active network administrator for this network id.")
 
     routing_owner = admin
+    payload.msg = sanitize_msg_images(payload.msg if isinstance(payload.msg, dict) else {})
     canonical_type = _to_canonical_type(payload.type)
     validate_service_pa_message_fields(canonical_type, payload.msg)
     scope = type_scope(canonical_type)
@@ -895,7 +934,15 @@ def create_network_guest_geo_propagated_message(
         scope=scope,
         text=display_text_for_service_pa(payload.msg)
         if canonical_type in (CanonicalMessageType.PA, CanonicalMessageType.SERVICE)
-        else str(payload.msg.get("description") or payload.msg.get("title") or payload.type.value),
+        else str(
+            payload.msg.get("description")
+            or payload.msg.get("title")
+            or (
+                ""
+                if isinstance(payload.msg.get("images"), list) and payload.msg.get("images")
+                else payload.type.value
+            )
+        ),
         body_json={**payload.msg, "guest_id": guest_id, "guest_name": guest_session.guest_name},
         metadata_json=metadata,
         created_at=datetime.utcnow(),

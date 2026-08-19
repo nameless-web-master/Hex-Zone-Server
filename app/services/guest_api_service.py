@@ -446,6 +446,23 @@ def zone_message_event_to_member_zone_message_response(
             sender_id=row.sender_id,
         )
 
+    images: list[str] | None = None
+    raw_images = body.get("images")
+    if isinstance(raw_images, list):
+        urls = [
+            str(item).strip()
+            for item in raw_images
+            if isinstance(item, str)
+            and item.strip()
+            and (
+                item.strip().startswith("https://")
+                or item.strip().startswith("http://")
+                or item.strip().startswith("data:image/")
+            )
+        ][:5]
+        if urls:
+            images = urls
+
     return ZoneMessageResponse(
         id=row.id,
         zone_id=row.zone_id,
@@ -472,6 +489,7 @@ def zone_message_event_to_member_zone_message_response(
         subject=subject,
         topic=topic,
         subtopic=subtopic,
+        images=images,
         **relevant_zone_fields,
     )
 
@@ -717,7 +735,10 @@ def create_member_to_guest_zone_message(
         return {"__reject__": "not_found", "message": "Guest session not found for this zone."}
 
     display_text = (text or "").strip()
-    if canonical == CanonicalMessageType.CHAT and not display_text:
+    msg_images = (
+        msg.get("images") if isinstance(msg, dict) and isinstance(msg.get("images"), list) else None
+    )
+    if canonical == CanonicalMessageType.CHAT and not display_text and not msg_images:
         return {"__reject__": "validation", "message": "message text is required for CHAT."}
 
     body: dict[str, Any] = {
@@ -725,6 +746,11 @@ def create_member_to_guest_zone_message(
         "guest_name": row.guest_name,
         "zone_id": zid,
     }
+    if isinstance(msg, dict):
+        if msg.get("broadcast_name"):
+            body["broadcast_name"] = msg.get("broadcast_name")
+        if msg_images:
+            body["images"] = msg_images
     metadata: dict[str, Any] = {"flow": "member_to_guest", "guest_id": gid}
     if isinstance(msg, dict):
         metadata.update(msg)

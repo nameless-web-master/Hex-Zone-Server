@@ -99,7 +99,11 @@ def validate_service_pa_message_fields(
         raise ServicePaValidationError("Invalid topic for PA message.")
 
     description = str(msg.get("description") or msg.get("text") or "").strip()
-    if not description:
+    images = msg.get("images")
+    has_images = isinstance(images, list) and any(
+        isinstance(item, str) and item.strip() for item in images
+    )
+    if not description and not has_images:
         raise ServicePaValidationError("Message body is required for PA and SERVICE messages.")
 
 
