@@ -449,17 +449,26 @@ def zone_message_event_to_member_zone_message_response(
     images: list[str] | None = None
     raw_images = body.get("images")
     if isinstance(raw_images, list):
-        urls = [
-            str(item).strip()
-            for item in raw_images
-            if isinstance(item, str)
-            and item.strip()
-            and (
-                item.strip().startswith("https://")
-                or item.strip().startswith("http://")
-                or item.strip().startswith("data:image/")
-            )
-        ][:5]
+        urls: list[str] = []
+        for item in raw_images:
+            token = ""
+            if isinstance(item, str):
+                token = item.strip()
+            elif isinstance(item, dict):
+                url = item.get("url")
+                if isinstance(url, str):
+                    token = url.strip()
+            if (
+                token
+                and (
+                    token.startswith("https://")
+                    or token.startswith("http://")
+                    or token.startswith("data:image/")
+                )
+            ):
+                urls.append(token)
+            if len(urls) >= 5:
+                break
         if urls:
             images = urls
 

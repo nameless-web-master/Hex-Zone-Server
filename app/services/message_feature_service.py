@@ -73,9 +73,13 @@ def sanitize_msg_images(msg: dict) -> dict:
     urls: list[str] = []
     if isinstance(raw, list):
         for item in raw:
-            if not isinstance(item, str):
-                continue
-            token = item.strip()
+            token = ""
+            if isinstance(item, str):
+                token = item.strip()
+            elif isinstance(item, dict):
+                url = item.get("url")
+                if isinstance(url, str):
+                    token = url.strip()
             if not token:
                 continue
             if token.startswith(("https://", "http://", "data:image/")):
