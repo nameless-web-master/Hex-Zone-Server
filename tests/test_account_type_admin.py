@@ -11,7 +11,10 @@ from app.database import Base
 from app.models import Owner
 from app.models.owner import AccountType, OwnerRole
 from app.schemas.schemas import AccountTypeEnum, OwnerUpdate
-from app.services.account_type_policy import assert_account_type_change_allowed
+from app.services.account_type_policy import (
+    account_type_for_invited_member,
+    assert_account_type_change_allowed,
+)
 
 
 @pytest.fixture()
@@ -119,7 +122,7 @@ def test_system_admin_can_promote_administrator_to_private(db):
 
     assert updated is not None
     assert updated.account_type == AccountType.PRIVATE
-    assert member.account_type == AccountType.PRIVATE
+    assert member.account_type == AccountType.EXCLUSIVE
 
 
 def test_non_system_admin_cannot_change_other_users_account_type(db):
@@ -203,3 +206,38 @@ def test_private_account_type_requires_administrator_role(db):
             AccountType.PRIVATE.value,
         )
     assert exc.value.status_code == 422
+
+
+def test_invited_member_account_type_matches_admin_tier(db):
+    exclusive_admin = _owner(
+        db,
+        email="exclusive-admin@example.com",
+        zone_id="exclusive-zone",
+        account_type=AccountType.EXCLUSIVE,
+        role=OwnerRole.ADMINISTRATOR,
+    )
+    plus_admin = _owner(
+        db,
+        email="plus-admin@example.com",
+        zone_id="plus-zone",
+        account_type=AccountType.PRIVATE_PLUS,
+        role=OwnerRole.ADMINISTRATOR,
+    )
+    db.commit()
+
+    assert account_type_for_invited_member(exclusive_admin) == AccountType.EXCLUSIVE
+    assert account_type_for_invited_member(plus_admin) == AccountType.PRIVATE_PLUS
+
+
+def test_invited_member_account_type_system_admin_is_exclusive(db):
+    system_admin = _owner(
+        db,
+        email="admin@test.com",
+        zone_id="DISTRICT-11",
+        account_type=AccountType.PRIVATE,
+        role=OwnerRole.ADMINISTRATOR,
+    )
+    db.commit()
+
+    assert account_type_for_invited_member(system_admin) == AccountType.EXCLUSIVE
+

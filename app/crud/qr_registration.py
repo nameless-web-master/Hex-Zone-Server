@@ -10,12 +10,20 @@ from typing import Optional
 def create_qr_registration(
     db: Session,
     owner_id: int,
-    expires_in_hours: int = 24,
+    expires_in_hours: int | None = 24,
 ) -> QRRegistration:
-    """Create a new QR registration token."""
+    """Create a new QR registration token.
+
+    ``expires_in_hours=None`` (or ``0``) means the token never expires and
+    can be redeemed by multiple members (printed outdoor-sign QR). Timed
+    tokens remain single-use.
+    """
     token = generate_qr_token()
-    expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
-    
+    if expires_in_hours is None or int(expires_in_hours) <= 0:
+        expires_at = None
+    else:
+        expires_at = datetime.utcnow() + timedelta(hours=int(expires_in_hours))
+
     db_qr = QRRegistration(
         token=token,
         owner_id=owner_id,

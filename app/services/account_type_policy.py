@@ -33,6 +33,17 @@ def is_system_administrator(owner: Owner) -> bool:
     return normalize_pricing_tier_key(owner.account_type.value) == PRICING_TIER_PRIVATE
 
 
+def account_type_for_invited_member(administrator: Owner) -> AccountType:
+    """Account type assigned to a user invited by this administrator.
+
+    Invited members inherit the inviter's tier. Private is reserved for
+    system administrators, so a Private inviter's members become Exclusive.
+    """
+    if is_system_administrator(administrator):
+        return AccountType.EXCLUSIVE
+    return administrator.account_type
+
+
 def owner_may_edit_network_id(owner: Owner) -> bool:
     """Only Private-tier owners may change their network id (zone_id)."""
     return is_system_administrator(owner)

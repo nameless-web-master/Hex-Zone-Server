@@ -1,7 +1,7 @@
 """QR Registration model."""
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Index
 from sqlalchemy.orm import relationship
-from datetime import datetime, timedelta
+from datetime import datetime
 from app.database import Base
 
 
@@ -17,7 +17,8 @@ class QRRegistration(Base):
     
     # Status
     used = Column(Boolean, default=False, nullable=False)
-    expires_at = Column(DateTime, nullable=False)
+    # Null means the invite never expires (printed / outdoor QR).
+    expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
@@ -30,7 +31,13 @@ class QRRegistration(Base):
 
     def is_expired(self) -> bool:
         """Check if QR registration token is expired."""
+        if self.expires_at is None:
+            return False
         return datetime.utcnow() > self.expires_at
+
+    def is_reusable(self) -> bool:
+        """Never-expiring (∞) tokens can be redeemed by multiple members."""
+        return self.expires_at is None
 
     def __repr__(self) -> str:
         return f"<QRRegistration(id={self.id}, owner_id={self.owner_id}, used={self.used})>"

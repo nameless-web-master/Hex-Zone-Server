@@ -188,6 +188,21 @@ def patch_registration_code_email_columns() -> None:
     logger.info("Registration code email/tier columns patch applied")
 
 
+def patch_qr_registration_expires_nullable() -> None:
+    """Allow never-expiring member-invite QR tokens on existing databases."""
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as conn:
+        conn.execute(text("SET LOCAL lock_timeout = '5s';"))
+        conn.execute(text("SET LOCAL statement_timeout = '8s';"))
+        if conn.execute(text("SELECT to_regclass('public.qr_registrations')")).scalar() is None:
+            return
+        conn.execute(
+            text("ALTER TABLE qr_registrations ALTER COLUMN expires_at DROP NOT NULL;")
+        )
+    logger.info("qr_registrations.expires_at nullable patch applied")
+
+
 def init_db():
     """Initialize database tables."""
     import app.models  # noqa: F401
@@ -198,6 +213,10 @@ def init_db():
     # Critical: Owner ORM maps latitude/longitude; patch before any request path runs.
     patch_owner_location_columns()
     Base.metadata.create_all(bind=engine)
+    try:
+        patch_qr_registration_expires_nullable()
+    except Exception as exc:
+        logger.exception("QR registration expires_at nullable patch failed: %s", exc)
 
     if engine.dialect.name == "postgresql":
         # Quick-alert templates live in `messages` flagged with is_template.

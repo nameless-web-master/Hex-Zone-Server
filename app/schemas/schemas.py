@@ -381,7 +381,16 @@ class ZoneResponse(BaseModel):
 
 class QRRegistrationCreate(BaseModel):
     """QR registration creation schema."""
-    expires_in_hours: int = Field(default=24, ge=1, le=720)
+    expires_in_hours: int | None = Field(
+        default=24,
+        ge=0,
+        le=720,
+        description=(
+            "Hours until the invite token expires. Timed values are single-use. "
+            "Send 0 (or null) for a never-expiring multi-use token, e.g. a printed "
+            "QR on an outdoor sign."
+        ),
+    )
 
 
 class QRRegistrationResponse(BaseModel):
@@ -390,7 +399,7 @@ class QRRegistrationResponse(BaseModel):
     token: str
     owner_id: int
     used: bool
-    expires_at: datetime
+    expires_at: datetime | None = None
     created_at: datetime
 
     class Config:

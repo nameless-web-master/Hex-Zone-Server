@@ -68,6 +68,8 @@ def compute_expires_at(
         if when.tzinfo is not None:
             when = when.replace(tzinfo=None)
         return when, None
+    if expires_in_hours is not None and float(expires_in_hours) == 0:
+        return None, None
     hours = expires_in_hours if expires_in_hours is not None else 168.0
     if hours <= 0 or hours > MAX_GUEST_QR_TOKEN_TTL_HOURS:
         return None, {
@@ -146,8 +148,7 @@ def create_guest_qr_token(
         when, terr = compute_expires_at(expires_at=expires_at, expires_in_hours=expires_in_hours)
         if terr:
             return terr
-        assert when is not None
-        if when <= datetime.utcnow():
+        if when is not None and when <= datetime.utcnow():
             return {"error": "INVALID_EXPIRY", "message": "Expiry must be in the future.", "http_status": 422}
 
     raw = secrets.token_urlsafe(32)

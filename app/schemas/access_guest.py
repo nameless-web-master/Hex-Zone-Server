@@ -315,9 +315,12 @@ class GuestQrTokenCreate(BaseModel):
     zone_id: str = Field(..., min_length=1, max_length=100)
     expires_in_hours: float | None = Field(
         default=None,
-        ge=1,
+        ge=0,
         le=float(MAX_GUEST_QR_TOKEN_TTL_HOURS),
-        description=f"If set (without expires_at), TTL from now. Max {MAX_GUEST_QR_TOKEN_TTL_HOURS}h.",
+        description=(
+            f"If set (without expires_at), TTL from now. Max {MAX_GUEST_QR_TOKEN_TTL_HOURS}h. "
+            "Send 0 for a never-expiring token (printed outdoor-sign QR)."
+        ),
     )
     expires_at: datetime | None = Field(default=None, description="Absolute expiry (UTC naive or ISO).")
     event_id: str | None = Field(default=None, max_length=100, description="Bind arrivals to this event id.")

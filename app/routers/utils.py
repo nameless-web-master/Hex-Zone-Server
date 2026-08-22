@@ -24,6 +24,7 @@ from app.services.device_entitlements import (
     assert_admin_user_member_capacity,
 )
 from app.services.member_join_welcome_service import notify_members_of_new_join
+from app.services.account_type_policy import account_type_for_invited_member
 from app.services.system_admin_seed import (
     SYSTEM_ADMIN_EMAIL,
     SYSTEM_ADMIN_ZONE_ID,
@@ -210,7 +211,9 @@ async def convert_to_h3(
         "Not for door guest access — use **`GET /api/access/qr-link`** for canonical **`/access?zid=`** URLs. "
         "Available to administrators of account tiers that support invited user members: "
         "**Private**, **Private+**, **Exclusive** (admin + 1 user), and **Enhanced+**. "
-        "**Enhanced** (solo) accounts cannot generate member invites."
+        "**Enhanced** (solo) accounts cannot generate member invites. "
+        "Send **`expires_in_hours`: 0** (or **null**) for a never-expiring "
+        "**multi-use** token (printed outdoor-sign QR). Timed tokens are single-use."
     ),
     responses={
         status.HTTP_403_FORBIDDEN: {
@@ -270,10 +273,15 @@ async def generate_qr_registration(
     "/qr/join",
     response_model=OwnerResponse,
     summary="Join account with QR token",
-    description="Complete registration by consuming invite token from QR flow.",
+    description=(
+        "Complete registration by consuming an invite token from the QR flow. "
+        "Timed tokens (1h / 24h / 7d / 30d) are single-use. Never-expiring (∞) "
+        "tokens can be redeemed by multiple members until the account's member "
+        "capacity is reached."
+    ),
     responses={
         status.HTTP_400_BAD_REQUEST: {
-            "description": "QR token already used or expired.",
+            "description": "QR token already used (timed tokens) or expired.",
         },
         status.HTTP_403_FORBIDDEN: {
             "description": "QR token is invalid for account join policy.",
@@ -300,8 +308,9 @@ async def join_with_qr(
             detail="Invalid or expired QR registration token",
         )
     
-    # Check if already used
-    if qr.used:
+    # Timed tokens are single-use. Never-expiring (∞) tokens stay redeemable
+    # for additional members (subject to account capacity).
+    if qr.used and not qr.is_reusable():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="QR registration token already used",
@@ -337,9 +346,10 @@ async def join_with_qr(
             detail="Email already registered",
         )
 
-    # Create new owner inheriting the inviter's account type so an Exclusive
-    # invite stays Exclusive (admin + 1 user) and a Private invite stays Private.
+    # Invited members inherit the inviter's tier. Private is reserved for
+    # system administrators, so those invites become Exclusive.
     from app.schemas.schemas import OwnerCreate, AccountTypeEnum, OwnerRoleEnum
+    member_account_type = account_type_for_invited_member(owner)
     new_owner_data = OwnerCreate(
         email=qr_data.email,
         # Enforce inviter zone ownership for all QR-based joins.
@@ -347,7 +357,7 @@ async def join_with_qr(
         first_name=qr_data.first_name,
         last_name=qr_data.last_name,
         password=qr_data.password,
-        account_type=AccountTypeEnum(owner.account_type.value),
+        account_type=AccountTypeEnum(member_account_type.value),
         role=OwnerRoleEnum.USER,
         account_owner_id=owner.id,
         address=qr_data.address,
@@ -356,8 +366,8 @@ async def join_with_qr(
 
     new_owner = owner_crud.create_owner(db, new_owner_data)
 
-    # Mark QR as used
-    qr_crud.mark_qr_registration_used(db, qr.token)
+    if not qr.is_reusable():
+        qr_crud.mark_qr_registration_used(db, qr.token)
     db.commit()
 
     await notify_members_of_new_join(db, new_owner)

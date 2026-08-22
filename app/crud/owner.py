@@ -94,15 +94,22 @@ def cascade_account_type_from_administrator(
     administrator: Owner,
     account_type: AccountType,
 ) -> None:
-    """Keep invited users' account_type aligned with their administrator."""
+    """Keep invited users' account_type aligned with their administrator.
+
+    Private (system administrator) does not cascade to members — they receive
+    Exclusive instead. Other tiers copy the administrator's type.
+    """
     if administrator.role.value != "administrator":
         return
+    from app.services.account_type_policy import account_type_for_invited_member
+
+    member_type = account_type_for_invited_member(administrator)
     root_id = administrator.account_owner_id or administrator.id
     db.query(Owner).filter(
         Owner.account_owner_id == root_id,
         Owner.id != administrator.id,
     ).update(
-        {Owner.account_type: account_type},
+        {Owner.account_type: member_type},
         synchronize_session=False,
     )
 
