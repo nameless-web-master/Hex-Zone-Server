@@ -65,6 +65,15 @@ class Settings(BaseSettings):
     GUEST_ACCESS_APP_BASE_URL: str = ""
     PUBLIC_WEB_APP_URL: str = ""
 
+    # Android App Links / iOS Universal Links (QR HTTPS host).
+    ANDROID_PACKAGE_NAME: str = "com.safezonepatrol.mobile"
+    # Comma-separated SHA-256 fingerprints (Play App Signing + upload/debug keys).
+    ANDROID_SHA256_CERT_FINGERPRINTS: str = ""
+    IOS_BUNDLE_ID: str = "com.neighbourhoodassistant.safe-zone-patrol"
+    # Apple Developer Team ID (required for Universal Links verification).
+    APPLE_TEAM_ID: str = ""
+    APP_CUSTOM_SCHEME: str = "safezonepatrol"
+
     # Anonymous POST /api/access/permission: max requests per client IP per rolling minute.
     GUEST_ACCESS_PERMISSION_MAX_PER_MINUTE: int = 60
 

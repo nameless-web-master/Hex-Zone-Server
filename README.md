@@ -105,7 +105,7 @@ Members (Bearer): `GET /api/access/guest-requests?zone_id=...` — list **`guest
 
 Unexpected guests: `POST /api/access/approve`, `POST /api/access/reject`.
 
-**Deploy:** set `GUEST_ACCESS_APP_BASE_URL` (SPA origin, no trailing slash). Optional `GUEST_ACCESS_PERMISSION_MAX_PER_MINUTE` (default 60) limits anonymous arrivals per client IP. See **Testing** below for manual checks.
+**Deploy:** set `GUEST_ACCESS_APP_BASE_URL` (HTTPS origin encoded into QR images, no trailing slash). Serve App Links at `/.well-known/assetlinks.json` and Universal Links at `/.well-known/apple-app-site-association` (`ANDROID_SHA256_CERT_FINGERPRINTS`, `APPLE_TEAM_ID`). Optional `GUEST_ACCESS_PERMISSION_MAX_PER_MINUTE` (default 60) limits anonymous arrivals per client IP. See **Testing** below for manual checks.
 
 ## Contract API Endpoints
 
