@@ -1294,8 +1294,8 @@ async def test_contract_register_admin_with_free_succeeds(test_db, override_get_
 
 
 @pytest.mark.asyncio
-async def test_exclusive_account_allows_one_user_rejects_second(test_db, override_get_db):
-    """Exclusive accounts: admin can invite exactly 1 user (the 2nd is rejected)."""
+async def test_exclusive_account_rejects_user_registration(test_db, override_get_db):
+    """Exclusive accounts are solo: no additional user members may be registered."""
     async with AsyncClient(app=app, base_url="http://test") as client:
         admin = await client.post(
             "/owners/register",
@@ -1328,26 +1328,9 @@ async def test_exclusive_account_allows_one_user_rejects_second(test_db, overrid
                 "address": "User Address",
             },
         )
-        assert first_user.status_code == 201, first_user.text
-
-        second_user = await client.post(
-            "/owners/register",
-            json={
-                "email": "exclusive-user-2@example.com",
-                "zone_id": "exclusive-zone",
-                "first_name": "Exclusive",
-                "last_name": "UserTwo",
-                "account_type": "exclusive",
-                "role": "user",
-                "account_owner_id": admin_id,
-                "password": "SecurePassword123",
-                "address": "User Address",
-            },
-        )
-        assert second_user.status_code == 403
-        message = _http_error_message(second_user.json()).lower()
-        assert "exclusive" in message
-        assert "1" in message
+        assert first_user.status_code == 422, first_user.text
+        message = _http_error_message(first_user.json()).lower()
+        assert "exclusive" in message or "user members" in message
 
 
 @pytest.mark.asyncio

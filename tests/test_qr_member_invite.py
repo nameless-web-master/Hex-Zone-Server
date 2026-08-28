@@ -87,9 +87,9 @@ async def _join(client: AsyncClient, token: str, email: str):
 async def test_qr_generate_never_expires(test_db, override_get_db):
     _, token = _admin(
         test_db,
-        email="exclusive-admin@example.com",
-        zone_id="exclusive-zone",
-        account_type=AccountType.EXCLUSIVE,
+        email="plus-admin@example.com",
+        zone_id="plus-zone",
+        account_type=AccountType.PRIVATE_PLUS,
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         generate = await client.post(
@@ -107,9 +107,9 @@ async def test_qr_generate_never_expires(test_db, override_get_db):
 async def test_qr_join_never_expiring_token(test_db, override_get_db):
     admin, token = _admin(
         test_db,
-        email="exclusive-admin@example.com",
-        zone_id="exclusive-zone",
-        account_type=AccountType.EXCLUSIVE,
+        email="plus-admin@example.com",
+        zone_id="plus-zone",
+        account_type=AccountType.PRIVATE_PLUS,
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         generate = await client.post(
@@ -122,7 +122,7 @@ async def test_qr_join_never_expiring_token(test_db, override_get_db):
         assert join.status_code == 200, join.text
         joined = join.json()
         assert joined["zone_id"] == admin.zone_id
-        assert joined["account_type"] == "exclusive"
+        assert joined["account_type"] == "private_plus"
         assert joined["role"] == "user"
 
 
@@ -177,7 +177,8 @@ async def test_infinity_qr_is_multi_use(test_db, override_get_db):
 
 
 @pytest.mark.asyncio
-async def test_qr_join_inherits_exclusive_admin_account_type(test_db, override_get_db):
+async def test_qr_generate_rejected_for_exclusive_admin(test_db, override_get_db):
+    """Exclusive accounts are solo and cannot generate member-invite QR codes."""
     _, token = _admin(
         test_db,
         email="exclusive-admin@example.com",
@@ -190,10 +191,10 @@ async def test_qr_join_inherits_exclusive_admin_account_type(test_db, override_g
             headers={"Authorization": f"Bearer {token}"},
             json={"expires_in_hours": 24},
         )
-        assert generate.status_code == 200, generate.text
-        join = await _join(client, generate.json()["token"], "member@example.com")
-        assert join.status_code == 200, join.text
-        assert join.json()["account_type"] == "exclusive"
+        assert generate.status_code == 403, generate.text
+        body = generate.json()
+        text = str(body.get("message") or body.get("detail") or "").lower()
+        assert "member invite" in text or "solo" in text or "exclusive" in text
 
 
 @pytest.mark.asyncio

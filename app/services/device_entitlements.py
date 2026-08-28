@@ -37,7 +37,7 @@ def is_smart_home_hid(hid: str | None) -> bool:
 # user members at all.
 USER_MEMBER_LIMITS_BY_ACCOUNT_TYPE: dict[str, int | None] = {
     "private": None,
-    "exclusive": 1,
+    "exclusive": 0,
     "private_plus": None,
     "enhanced": 0,
     "enhanced_plus": None,

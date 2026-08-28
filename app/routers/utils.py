@@ -210,8 +210,8 @@ async def convert_to_h3(
         "Generate invite token used by **account/member join** QR flow only. "
         "Not for door guest access — use **`GET /api/access/qr-link`** for canonical **`/access?zid=`** URLs. "
         "Available to administrators of account tiers that support invited user members: "
-        "**Private**, **Private+**, **Exclusive** (admin + 1 user), and **Enhanced+**. "
-        "**Enhanced** (solo) accounts cannot generate member invites. "
+        "**Private**, **Private+**, and **Enhanced+**. "
+        "**Exclusive** and **Enhanced** (solo) accounts cannot generate member invites. "
         "Send **`expires_in_hours`: 0** (or **null**) for a never-expiring "
         "**multi-use** token (printed outdoor-sign QR). Timed tokens are single-use."
     ),
