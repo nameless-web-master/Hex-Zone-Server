@@ -2027,18 +2027,8 @@ async def test_zone_limit_exceeded_returns_clear_message(test_db, override_get_d
                 "h3_cells": [],
             },
         )
-        third = await client.post(
-            "/zones/",
-            headers=user_headers,
-            json={
-                "zone_id": "USER-LIMIT-ZONE-3",
-                "zone_type": "warn",
-                "name": "Zone 3",
-                "description": "z3",
-                "h3_cells": [],
-            },
-        )
         assert first.status_code == 201
-        assert second.status_code == 201
-        assert third.status_code == 403
-        assert "zone #2 and zone #3" in _http_error_message(third.json()).lower()
+        assert second.status_code == 409
+        body = second.json()
+        assert body.get("error_code") == "ZONE_QUOTA_MAX_TOTAL_REACHED"
+        assert "secondary" in _http_error_message(body).lower()

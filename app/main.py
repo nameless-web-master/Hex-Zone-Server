@@ -190,10 +190,11 @@ OPENAPI_TAGS = [
     {
         "name": "zones",
         "description": (
-            "Main Zone and optional Zone #2/#3 management. Includes Zone Matching, "
+            "Primary and secondary zone management. Includes Zone Matching, "
             "H3/grid, geofence, and related zone configuration payloads. Administrators can "
-            "create only one Main Zone; users can create up to two zones. Zone listing follows "
-            "role-aware visibility (admins see account zones, users see own zones plus admin main zone)."
+            "create up to two primary zones; each invited member can create one secondary zone. "
+            "Zone listing is role-aware (admins see account primary + member secondaries; "
+            "members see admin primary zones plus their own secondary)."
         ),
     },
     {

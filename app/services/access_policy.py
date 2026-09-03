@@ -160,8 +160,8 @@ def zone_listing_owner_ids(db: Session, owner: Owner) -> list[int]:
     """Return owner ids whose zones the caller may list or read.
 
     System administrators see every zone on the platform.
-    Account administrators see every linked user's zones (same account root).
-    Users see only their own zones plus the administrator's main zone (account root).
+    Account administrators see every linked user's zones (primary + member secondaries).
+    Users see their own secondary zone(s) plus the administrator's primary zones (account root).
     """
     if is_system_administrator(owner):
         return _all_owner_ids(db, include_inactive=True)

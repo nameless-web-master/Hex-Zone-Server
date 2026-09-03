@@ -87,22 +87,25 @@ class Settings(BaseSettings):
     H3_MIN_RESOLUTION: int = 0
     H3_MAX_RESOLUTION: int = 15
 
-    # Zone capacity policy (per user via zones.creator_id)
-    # Each user may create up to MAX_ZONES_TOTAL zones (default 3).
-    MAX_ZONES_TOTAL: int = 3
-    RESERVED_FOR_STANDARD_USERS: int = 1
-    # Legacy env aliases for MAX_ZONES_TOTAL (per-user cap).
+    # Zone capacity policy (per creator_id / role):
+    # - Administrators create up to MAX_ZONES_ADMINISTRATOR primary zones (default 2).
+    # - Invited members (role=user) create up to MAX_ZONES_USER secondary zones (default 1).
+    MAX_ZONES_ADMINISTRATOR: int = 2
+    MAX_ZONES_USER: int = 1
+    # Legacy flat-cap names (ignored for quota math; kept so old .env files still load).
+    MAX_ZONES_TOTAL: int | None = None
+    RESERVED_FOR_STANDARD_USERS: int | None = None
     MAX_ZONES_PER_ACCOUNT: int | None = None
     MAX_ZONES_PER_USER: int | None = None
     REGISTRATION_CODE_EXPIRE_HOURS: int = 24
 
     @model_validator(mode="after")
     def _resolve_zone_capacity(self) -> "Settings":
-        """Accept legacy env names; MAX_ZONES_TOTAL is the per-user cap."""
-        for legacy in (self.MAX_ZONES_PER_ACCOUNT, self.MAX_ZONES_PER_USER):
-            if legacy is not None:
-                object.__setattr__(self, "MAX_ZONES_TOTAL", int(legacy))
-                break
+        """Optional: RESERVED_FOR_STANDARD_USERS aliases MAX_ZONES_USER."""
+        if self.RESERVED_FOR_STANDARD_USERS is not None:
+            object.__setattr__(
+                self, "MAX_ZONES_USER", max(1, int(self.RESERVED_FOR_STANDARD_USERS))
+            )
         return self
 
     # Geocoding / area boundaries (OpenStreetMap Nominatim)

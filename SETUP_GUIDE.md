@@ -23,7 +23,7 @@ WHAT_IS_INCLUDED = """
 ✅ User registration (Private & Exclusive accounts)
 ✅ QR-Code based registration flow
 ✅ Device management with H3 hexagonal grid
-✅ Zone CRUD with 3-zone limit enforcement
+✅ Zone CRUD with role-based zone quotas (admin 2 primary / member 1 secondary)
 ✅ 7 zone types (warn, alert, geofence, emergency, restricted, custom_1, custom_2)
 ✅ H3 cell ID conversion (lat/lng → H3)
 ✅ Account type validation & enforcement
@@ -424,7 +424,7 @@ ZONE
     - owner_id
   
   Constraints:
-    - Max 3 zones per owner (enforced at router level)
+    - Max 2 primary zones for administrators; max 1 secondary zone per invited member
     - zone_id must be unique globally
     - h3_cells must contain at least one valid H3 cell ID
     - zone_type must be one of the 7 defined types
@@ -485,7 +485,7 @@ Zone:
   - Name: 1-255 characters
   - Zone type: One of 7 predefined types
   - H3 cells: Valid H3 cell IDs (validation via h3-py)
-  - Max 3 zones per owner (enforced)
+  - Max 2 primary zones for administrators; max 1 secondary zone per invited member (enforced)
   - Parameters: Valid JSON object
 
 QR Registration:
@@ -639,8 +639,10 @@ H3_MIN_RESOLUTION=0 (default)
 H3_MAX_RESOLUTION=15 (default)
   Description: Allowed H3 resolution boundaries
 
-MAX_ZONES_PER_USER=3 (default)
-  Description: Maximum zones per owner
+MAX_ZONES_ADMINISTRATOR=2 (default)
+  Description: Maximum primary zones an administrator may create
+MAX_ZONES_USER=1 (default)
+  Description: Maximum secondary zones each invited member may create
   Purpose: Business rule enforcement
 
 API_TITLE=Zone Weaver API (default)
@@ -655,7 +657,8 @@ SECRET_KEY=dev-secret-key-change-in-production-minimum-32-chars
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 H3_DEFAULT_RESOLUTION=13
-MAX_ZONES_PER_USER=3
+MAX_ZONES_ADMINISTRATOR=2
+MAX_ZONES_USER=1
 
 DOCKER COMPOSE .env
 ===================
@@ -664,7 +667,8 @@ SECRET_KEY=docker-secret-key-change-in-production-minimum-32-chars
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 H3_DEFAULT_RESOLUTION=13
-MAX_ZONES_PER_USER=3
+MAX_ZONES_ADMINISTRATOR=2
+MAX_ZONES_USER=1
 """
 
 # ============================================================================

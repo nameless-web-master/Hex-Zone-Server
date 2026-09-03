@@ -39,8 +39,12 @@ class ZoneCapabilities:
         }
 
 
-def _max_zones_per_user() -> int:
-    return max(1, int(settings.MAX_ZONES_TOTAL))
+def _max_zones_for_role(role: str) -> int:
+    """Administrators: primary zones; invited users: secondary zones."""
+    normalized = (role or "").strip().lower()
+    if normalized == "administrator":
+        return max(1, int(settings.MAX_ZONES_ADMINISTRATOR))
+    return max(1, int(settings.MAX_ZONES_USER))
 
 
 def lock_account_for_zone_policy(db: Session, root_owner_id: int) -> list[int]:
@@ -79,19 +83,28 @@ def count_zones_for_creator(db: Session, creator_id: int) -> int:
 
 
 def build_capabilities(role: str, total_zones: int) -> ZoneCapabilities:
-    max_total = _max_zones_per_user()
+    max_total = _max_zones_for_role(role)
     remaining_total = max(0, max_total - total_zones)
     can_create = remaining_total > 0
+    member_cap = max(1, int(settings.MAX_ZONES_USER))
     reason = None
     if not can_create:
-        reason = f"Maximum of {max_total} zones per user reached."
+        if (role or "").strip().lower() == "administrator":
+            reason = (
+                f"Maximum of {max_total} primary zones for administrators reached."
+            )
+        else:
+            reason = (
+                f"Maximum of {max_total} secondary zone"
+                f"{'' if max_total == 1 else 's'} for members reached."
+            )
     return ZoneCapabilities(
         role=role,
         can_create_zone=can_create,
         remaining_total=remaining_total,
         remaining_for_role=remaining_total,
         max_total=max_total,
-        reserved_for_standard_users=0,
+        reserved_for_standard_users=member_cap,
         reason=reason,
     )
 

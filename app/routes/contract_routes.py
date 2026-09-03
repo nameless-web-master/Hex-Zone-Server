@@ -428,7 +428,8 @@ async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     summary="List contract zones",
     description=(
         "Return zones accessible to the authenticated contract user. Administrators can "
-        "see all linked users' zones; users can see their own zones and administrator main zone."
+        "see all linked users' zones (primary + secondaries); users can see their own secondary "
+        "zone and the administrator's primary zones."
     ),
     responses={
         status.HTTP_401_UNAUTHORIZED: {

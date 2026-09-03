@@ -68,7 +68,7 @@ backend/
         ├── test_owner_registration    # Test user registration
         ├── test_owner_login           # Test JWT login
         ├── test_h3_conversion         # Test H3 cell conversion
-        └── test_zone_limits           # Test 3-zone limit enforcement
+        └── test_zone_limits           # Test role-based zone quota enforcement
 
 TOTAL: ~3,500 lines of production code + ~1,000 lines of tests
 """
@@ -106,7 +106,7 @@ DEVICE MANAGEMENT
 
 ZONE MANAGEMENT
 ✅ Zone CRUD operations
-✅ 3-zone limit per user enforcement
+✅ Role-based zone quotas (admin 2 primary / member 1 secondary)
 ✅ 7 zone types (warn, alert, geofence, emergency, restricted, custom_1, custom_2)
 ✅ H3 cell arrays for zone coverage
 ✅ PostGIS geometry support for exact boundaries (POLYGON)
