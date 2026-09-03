@@ -290,14 +290,19 @@ async def list_compose_zones(
 
 @router.get(
     "/compose/recipients",
-    summary="Preview recipients for one selected overlapping zone",
+    summary="Preview recipients for overlapping zone(s)",
     description=(
-        "When compose targets a single overlapping zone (``zone_record_id``), returns "
-        "the members who would receive that message type under primary/secondary routing."
+        "Returns members who would receive the given message type. Pass "
+        "``zone_record_id`` to scope the preview to one overlapping geometry; omit it "
+        "to preview fan-out across all matched zones (same as compose “All zones”)."
     ),
 )
 async def preview_compose_recipients(
-    zone_record_id: int = Query(..., ge=1, description="Selected ``zones.id`` geometry."),
+    zone_record_id: int | None = Query(
+        default=None,
+        ge=1,
+        description="Optional selected ``zones.id`` geometry. Omit for all matched zones.",
+    ),
     type: MessageFeatureType = Query(  # noqa: A002 - matches propagate payload field
         default=MessageFeatureType.PA,
         description="Message type whose routing rules apply to the preview.",

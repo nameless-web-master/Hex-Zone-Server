@@ -636,24 +636,26 @@ def preview_compose_recipients(
     message_type: CanonicalMessageType,
     latitude: float | None,
     longitude: float | None,
-    target_zone_record_id: int,
+    target_zone_record_id: int | None = None,
     query: str = "",
     network_zone_id: str | None = None,
 ) -> dict:
-    """Who would receive a geo message if the sender targets one overlapping zone."""
+    """Who would receive a geo message for one overlapping zone, or all matched zones."""
     live = get_owner_live_coordinates(db, sender.id)
     lat = latitude if latitude is not None else (live[0] if live else None)
     lon = longitude if longitude is not None else (live[1] if live else None)
+    selected_id = (
+        int(target_zone_record_id) if target_zone_record_id is not None else None
+    )
     if lat is None or lon is None:
         return {
             "zone_ids": [],
-            "zone_record_id": int(target_zone_record_id),
+            "zone_record_id": selected_id,
             "members": [],
             "location_status": "no_coordinates",
             "strategy": None,
         }
 
-    selected_id = int(target_zone_record_id)
     zone_ids, zone_record_ids, recipient_owner_ids, zone_meta = (
         resolve_geo_propagation_recipient_owner_ids(
             db,
@@ -665,7 +667,9 @@ def preview_compose_recipients(
             target_zone_record_id=selected_id,
         )
     )
-    if selected_id not in {int(rid) for rid in zone_record_ids}:
+    if selected_id is not None and selected_id not in {
+        int(rid) for rid in zone_record_ids
+    }:
         return {
             "zone_ids": [],
             "zone_record_id": selected_id,
@@ -701,7 +705,7 @@ def preview_compose_recipients(
         "zone_ids": zone_ids,
         "zone_record_id": selected_id,
         "members": members,
-        "location_status": "inside_zone",
+        "location_status": "inside_zone" if zone_record_ids else "outside_zone",
         "strategy": zone_meta.get("strategy"),
     }
 
