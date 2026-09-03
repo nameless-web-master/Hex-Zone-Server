@@ -136,6 +136,51 @@ def _empty_propagation_meta(*, network_zone_id: str = "") -> dict:
     }
 
 
+def _compose_zone_label(*, name: str | None, network_id: str | None) -> str:
+    clean_name = (name or "").strip()
+    clean_network = (network_id or "").strip()
+    if clean_name and clean_network:
+        return f"{clean_name} ({clean_network})"
+    return clean_name or clean_network or "Zone"
+
+
+def list_matched_compose_zones(
+    db: Session,
+    *,
+    latitude: float,
+    longitude: float,
+    network_zone_id: str | None = None,
+) -> list[dict]:
+    """Named acceptable-zone geometries that contain the evaluation point."""
+    zone_record_ids = evaluate_zone_records_containing_point(db, float(latitude), float(longitude))
+    zone_rows = _zone_rows_for_records(db, zone_record_ids)
+    network_filter = (network_zone_id or "").strip()
+    if network_filter:
+        zone_rows = [z for z in zone_rows if (z.zone_id or "").strip() == network_filter]
+
+    options: list[dict] = []
+    for zone in zone_rows:
+        network_id = (zone.zone_id or "").strip()
+        admin = resolve_network_administrator(db, network_id) if network_id else None
+        admin_id = int(admin.id) if admin is not None else None
+        name = str(getattr(zone, "name", None) or "").strip() or None
+        options.append(
+            {
+                "zone_record_id": int(zone.id),
+                "zone_id": network_id,
+                "name": name,
+                "label": _compose_zone_label(name=name, network_id=network_id),
+                "tier": (
+                    "primary"
+                    if _is_primary_zone_row(zone, network_admin_id=admin_id)
+                    else "secondary"
+                ),
+            }
+        )
+    options.sort(key=lambda row: (str(row.get("label") or ""), int(row["zone_record_id"])))
+    return options
+
+
 def _recipients_for_network_zone_rows(
     db: Session,
     *,
@@ -262,6 +307,7 @@ def resolve_network_geo_propagation_recipients(
     longitude: float,
     exclude_owner_id: int | None = None,
     network_zone_id: str | None = None,
+    target_zone_record_id: int | None = None,
 ) -> tuple[list[str], list[int], list[int], dict]:
     """Resolve geo-propagation recipients using primary vs secondary zone rules.
 
@@ -280,9 +326,42 @@ def resolve_network_geo_propagation_recipients(
   networks are served, each by its own tier (primary → admin + members, secondary →
   creator). Recipients across networks are merged; ``matched_network_zone_ids`` in
   the returned meta lists every network reached.
+
+  When ``target_zone_record_id`` is set, only that acceptable-zone geometry is
+  used (it must contain the point). Primary-vs-secondary is evaluated for that
+  row alone, so overlapping zones are not unioned.
     """
     zone_record_ids = evaluate_zone_records_containing_point(db, float(latitude), float(longitude))
     zone_rows = _zone_rows_for_records(db, zone_record_ids)
+
+    if target_zone_record_id is not None:
+        selected_id = int(target_zone_record_id)
+        selected_rows = [z for z in zone_rows if int(z.id) == selected_id]
+        if network_zone_id is not None:
+            network_id = (network_zone_id or "").strip()
+            selected_rows = [
+                z for z in selected_rows if (z.zone_id or "").strip() == network_id
+            ]
+        if not selected_rows:
+            empty_network = (
+                (network_zone_id or "").strip()
+                if network_zone_id is not None
+                else (sender.zone_id or "").strip()
+            )
+            return [], [], [], _empty_propagation_meta(network_zone_id=empty_network)
+        selected = selected_rows[0]
+        result = _recipients_for_network_zone_rows(
+            db,
+            network_id=(selected.zone_id or "").strip(),
+            network_rows=selected_rows,
+            sender=sender,
+            exclude_owner_id=exclude_owner_id,
+        )
+        if result is None:
+            return [], [], [], _empty_propagation_meta(
+                network_zone_id=(selected.zone_id or "").strip()
+            )
+        return result
 
     if network_zone_id is not None:
         network_id = (network_zone_id or "").strip()

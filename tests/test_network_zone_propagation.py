@@ -61,13 +61,14 @@ def _owner(
     return owner
 
 
-def _zone_row(*, record_id: int, network_id: str, creator_id: int, owner_id: int):
+def _zone_row(*, record_id: int, network_id: str, creator_id: int, owner_id: int, name: str = "Zone"):
     return SimpleNamespace(
         id=record_id,
         zone_id=network_id,
         creator_id=creator_id,
         owner_id=owner_id,
         active=True,
+        name=name,
     )
 
 
@@ -810,3 +811,218 @@ def test_primary_zone_panic_reaches_gps_non_invited_in_zone(net_db, monkeypatch)
     assert result["fanout"]["strategy"] == "primary_zone_gps_fanout"
     assert result["fanout"]["primary_zone_gps_fanout"] is True
     assert set(result["delivered_owner_ids"]) == {admin.id, outsider.id}
+
+
+def _patch_two_primary_networks(monkeypatch, net_a: str, net_b: str, admin_a, admin_b):
+    monkeypatch.setattr(
+        nzp,
+        "evaluate_zone_records_containing_point",
+        lambda db, lat, lon: [501, 502],
+    )
+    monkeypatch.setattr(
+        nzp,
+        "zone_ids_for_zone_records",
+        lambda db, ids: [net_a, net_b] if len(ids) > 1 else (
+            [net_a] if ids == [501] else [net_b] if ids == [502] else []
+        ),
+    )
+    monkeypatch.setattr(
+        nzp,
+        "_zone_rows_for_records",
+        lambda db, ids: [
+            row
+            for row in (
+                _zone_row(
+                    record_id=501,
+                    network_id=net_a,
+                    creator_id=admin_a.id,
+                    owner_id=admin_a.id,
+                    name="Park A",
+                ),
+                _zone_row(
+                    record_id=502,
+                    network_id=net_b,
+                    creator_id=admin_b.id,
+                    owner_id=admin_b.id,
+                    name="Park B",
+                ),
+            )
+            if row.id in set(ids)
+        ],
+    )
+
+
+def test_selected_zone_record_scopes_to_one_overlapping_network(net_db, monkeypatch):
+    net_a = "NET-PA"
+    net_b = "NET-PB"
+    admin_a = _owner(
+        net_db,
+        oid=1,
+        email="admin_a@x.com",
+        network_id=net_a,
+        role=OwnerRole.ADMINISTRATOR,
+        account_owner_id=None,
+        lat=47.61,
+        lon=-122.33,
+    )
+    admin_a.account_owner_id = admin_a.id
+    member_a = _owner(
+        net_db,
+        oid=2,
+        email="member_a@x.com",
+        network_id=net_a,
+        role=OwnerRole.USER,
+        account_owner_id=admin_a.id,
+        lat=47.62,
+        lon=-122.34,
+    )
+    admin_b = _owner(
+        net_db,
+        oid=3,
+        email="admin_b@x.com",
+        network_id=net_b,
+        role=OwnerRole.ADMINISTRATOR,
+        account_owner_id=None,
+        lat=47.61,
+        lon=-122.33,
+    )
+    admin_b.account_owner_id = admin_b.id
+    member_b = _owner(
+        net_db,
+        oid=4,
+        email="member_b@x.com",
+        network_id=net_b,
+        role=OwnerRole.USER,
+        account_owner_id=admin_b.id,
+        lat=47.61,
+        lon=-122.33,
+    )
+    net_db.commit()
+    _patch_two_primary_networks(monkeypatch, net_a, net_b, admin_a, admin_b)
+    monkeypatch.setattr(
+        "app.services.network_zone_propagation.owner_ids_located_within_zone_records",
+        lambda db, zone_record_ids, exclude_owner_id=None: [],
+    )
+
+    _, _, recipients, meta = nzp.resolve_network_geo_propagation_recipients(
+        net_db,
+        admin_a,
+        latitude=47.61,
+        longitude=-122.33,
+        exclude_owner_id=admin_a.id,
+        target_zone_record_id=502,
+    )
+    assert set(recipients) == {member_b.id, admin_b.id}
+    assert meta["matched_network_zone_ids"] == [net_b]
+    assert meta["sender_zone_record_ids"] == [502]
+
+    payload = PropagationMessageCreate(
+        type=MessageFeatureType.PANIC,
+        hid="device-select",
+        position=CoordinatePayload(latitude=47.61, longitude=-122.33),
+        msg={"description": "hello"},
+        zone_record_id=501,
+    )
+    result = mfs.create_geo_propagated_message(net_db, admin_a, payload)
+    assert set(result["delivered_owner_ids"]) == {member_a.id}
+
+
+def test_selected_zone_record_not_containing_raises(net_db, monkeypatch):
+    network = "NET-1"
+    admin = _owner(
+        net_db,
+        oid=1,
+        email="admin@x.com",
+        network_id=network,
+        role=OwnerRole.ADMINISTRATOR,
+        account_owner_id=None,
+        lat=47.61,
+        lon=-122.33,
+    )
+    admin.account_owner_id = admin.id
+    net_db.commit()
+    monkeypatch.setattr(
+        nzp,
+        "evaluate_zone_records_containing_point",
+        lambda db, lat, lon: [101],
+    )
+    monkeypatch.setattr(
+        nzp,
+        "zone_ids_for_zone_records",
+        lambda db, ids: [network],
+    )
+    monkeypatch.setattr(
+        nzp,
+        "_zone_rows_for_records",
+        lambda db, ids: [
+            _zone_row(record_id=101, network_id=network, creator_id=admin.id, owner_id=admin.id)
+        ],
+    )
+    payload = PropagationMessageCreate(
+        type=MessageFeatureType.PANIC,
+        hid="device-miss",
+        position=CoordinatePayload(latitude=47.61, longitude=-122.33),
+        msg={"description": "hello"},
+        zone_record_id=999,
+    )
+    with pytest.raises(mfs.SelectedZoneNotContainingError):
+        mfs.create_geo_propagated_message(net_db, admin, payload)
+
+
+def test_list_matched_compose_zones_and_preview(net_db, monkeypatch):
+    net_a = "NET-PA"
+    net_b = "NET-PB"
+    admin_a = _owner(
+        net_db,
+        oid=1,
+        email="admin_a@x.com",
+        network_id=net_a,
+        role=OwnerRole.ADMINISTRATOR,
+        account_owner_id=None,
+        lat=47.61,
+        lon=-122.33,
+    )
+    admin_a.account_owner_id = admin_a.id
+    member_a = _owner(
+        net_db,
+        oid=2,
+        email="member_a@x.com",
+        network_id=net_a,
+        role=OwnerRole.USER,
+        account_owner_id=admin_a.id,
+        lat=47.62,
+        lon=-122.34,
+    )
+    admin_b = _owner(
+        net_db,
+        oid=3,
+        email="admin_b@x.com",
+        network_id=net_b,
+        role=OwnerRole.ADMINISTRATOR,
+        account_owner_id=None,
+        lat=47.61,
+        lon=-122.33,
+    )
+    admin_b.account_owner_id = admin_b.id
+    net_db.commit()
+    _patch_two_primary_networks(monkeypatch, net_a, net_b, admin_a, admin_b)
+    monkeypatch.setattr(
+        "app.services.network_zone_propagation.owner_ids_located_within_zone_records",
+        lambda db, zone_record_ids, exclude_owner_id=None: [],
+    )
+
+    zones = nzp.list_matched_compose_zones(net_db, latitude=47.61, longitude=-122.33)
+    labels = {row["zone_record_id"]: row["label"] for row in zones}
+    assert labels[501] == "Park A (NET-PA)"
+    assert labels[502] == "Park B (NET-PB)"
+
+    preview = mfs.preview_compose_recipients(
+        net_db,
+        admin_a,
+        message_type=mfs.CanonicalMessageType.PANIC,
+        latitude=47.61,
+        longitude=-122.33,
+        target_zone_record_id=501,
+    )
+    assert preview["location_status"] == "inside_zone"
+    assert {row["id"] for row in preview["members"]} == {member_a.id}

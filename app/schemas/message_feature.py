@@ -43,6 +43,14 @@ class PropagationMessageCreate(BaseModel):
     to: str | None = Field(default=None, description="QR/access zone target")
     co: str | None = Field(default=None, description="Device zone id")
     receiver_owner_id: int | None = Field(default=None, ge=1)
+    zone_record_id: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "When the sender is inside multiple acceptable zones, limit delivery "
+            "to this ``zones.id`` geometry. Omitted means all overlapping zones."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod

@@ -10,6 +10,7 @@ from app.core.security import get_current_user
 from app.crud import owner as owner_crud
 from app.crud import zone as zone_crud
 from app.database import get_db
+from app.models.owner import Owner
 from app.models.zone import Zone, ZoneType
 from app.services.access_policy import visible_owner_ids, visible_zone_owner_ids
 from app.services.account_type_policy import is_system_administrator
@@ -186,6 +187,8 @@ class ZoneContractResponse(BaseModel):
     id: int
     zone_id: str
     owner_id: int
+    creator_id: Optional[int] = None
+    owner_name: Optional[str] = None
     name: str
     type: str
     geometry: dict[str, Any]
@@ -199,6 +202,8 @@ class ZoneContractResponse(BaseModel):
                 "id": 42,
                 "zone_id": "ZONE-7A29",
                 "owner_id": 9,
+                "creator_id": 9,
+                "owner_name": "Alex Rivera",
                 "name": "Warehouse Perimeter",
                 "type": "geofence",
                 "geometry": {"geo_fence_polygon": {"type": "Polygon", "coordinates": [[[106.8, -6.2], [106.9, -6.2], [106.9, -6.3], [106.8, -6.2]]]}},
@@ -568,7 +573,27 @@ def _normalize_payload(payload: dict[str, Any], partial: bool) -> dict[str, Any]
     return normalized
 
 
-def _serialize_zone(zone: Zone) -> dict[str, Any]:
+def _owner_display_name(owner: Owner | None) -> str | None:
+    if owner is None:
+        return None
+    label = (owner.message_display_name or "").strip()
+    return label or None
+
+
+def _owners_by_ids(db: Session, owner_ids: set[int]) -> dict[int, Owner]:
+    ids = {int(oid) for oid in owner_ids if oid is not None}
+    if not ids:
+        return {}
+    rows = db.query(Owner).filter(Owner.id.in_(tuple(ids))).all()
+    return {int(row.id): row for row in rows}
+
+
+def _serialize_zone(
+    zone: Zone,
+    *,
+    db: Session | None = None,
+    owners_by_id: dict[int, Owner] | None = None,
+) -> dict[str, Any]:
     params = zone.parameters if isinstance(zone.parameters, dict) else {}
     geometry = params.get("geometry") if isinstance(params.get("geometry"), dict) else {}
     config = params.get("config") if isinstance(params.get("config"), dict) else {}
@@ -589,11 +614,21 @@ def _serialize_zone(zone: Zone) -> dict[str, Any]:
     if not normalized_type:
         normalized_type = MODEL_TO_CANONICAL_ZONE_TYPE.get(zone.zone_type, "geofence")
 
+    preferred_owner_id = (
+        int(zone.creator_id) if zone.creator_id is not None else int(zone.owner_id)
+    )
+    names = owners_by_id
+    if names is None and db is not None:
+        lookup_ids = {int(zone.owner_id), preferred_owner_id}
+        names = _owners_by_ids(db, lookup_ids)
+    owner_name = _owner_display_name(names.get(preferred_owner_id)) if names else None
+
     return {
         "id": zone.id,
         "zone_id": zone.zone_id,
         "owner_id": zone.owner_id,
         "creator_id": zone.creator_id,
+        "owner_name": owner_name,
         "name": zone.name,
         "type": normalized_type,
         "geometry": geometry if isinstance(geometry, dict) else {},
@@ -601,6 +636,16 @@ def _serialize_zone(zone: Zone) -> dict[str, Any]:
         "created_at": zone.created_at.isoformat() if zone.created_at else None,
         "updated_at": zone.updated_at.isoformat() if zone.updated_at else None,
     }
+
+
+def _serialize_zones(db: Session, zones: list[Zone]) -> list[dict[str, Any]]:
+    owner_ids: set[int] = set()
+    for zone in zones:
+        owner_ids.add(int(zone.owner_id))
+        if zone.creator_id is not None:
+            owner_ids.add(int(zone.creator_id))
+    owners = _owners_by_ids(db, owner_ids)
+    return [_serialize_zone(zone, owners_by_id=owners) for zone in zones]
 
 
 @router.post(
@@ -705,7 +750,7 @@ async def create_zone(
     created_zone = zone_crud.get_zone_by_record_id_with_geojson(db, db_zone.id)
     if not created_zone:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve created zone")
-    return ZoneContractResponse.model_validate(_serialize_zone(created_zone))
+    return ZoneContractResponse.model_validate(_serialize_zone(created_zone, db=db))
 
 
 @router.get(
@@ -762,7 +807,10 @@ async def list_zones(
             limit=limit,
         )
         zones = [zone for zone in zones if zone.owner_id in allowed_ids]
-        return [ZoneContractResponse.model_validate(_serialize_zone(zone)) for zone in zones]
+        return [
+            ZoneContractResponse.model_validate(row)
+            for row in _serialize_zones(db, zones)
+        ]
 
     if owner_id is not None and owner_id not in allowed_ids:
         raise HTTPException(
@@ -777,7 +825,10 @@ async def list_zones(
         skip=skip,
         limit=limit,
     )
-    return [ZoneContractResponse.model_validate(_serialize_zone(zone)) for zone in zones]
+    return [
+        ZoneContractResponse.model_validate(row)
+        for row in _serialize_zones(db, zones)
+    ]
 
 
 @router.get(
@@ -1149,7 +1200,7 @@ async def get_zone(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"message": "Forbidden: cannot access this zone", "error_code": "ZONE_FORBIDDEN"},
         )
-    return ZoneContractResponse.model_validate(_serialize_zone(zone))
+    return ZoneContractResponse.model_validate(_serialize_zone(zone, db=db))
 
 
 @router.patch(
@@ -1215,7 +1266,7 @@ async def update_zone(
     ensure_zone_edit_allowed(owner, target_zone)
 
     normalized = _normalize_payload(zone_update.model_dump(exclude_none=True), partial=True)
-    current = _serialize_zone(target_zone)
+    current = _serialize_zone(target_zone, db=db)
     merged = {
         "name": normalized.get("name", target_zone.name),
         "type": normalized.get("type", current["type"]),
@@ -1265,7 +1316,7 @@ async def update_zone(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve updated zone",
         )
-    return ZoneContractResponse.model_validate(_serialize_zone(updated_zone))
+    return ZoneContractResponse.model_validate(_serialize_zone(updated_zone, db=db))
 
 
 @router.delete(

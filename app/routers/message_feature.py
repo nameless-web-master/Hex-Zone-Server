@@ -36,6 +36,7 @@ from app.schemas.message_feature import (
     AccessScheduleResponse,
     BlockRuleCreate,
     BlockRuleResponse,
+    MessageFeatureType,
     PermissionDecisionResponse,
     PropagationMessageCreate,
     PropagationMessageResponse,
@@ -50,6 +51,7 @@ from app.services.private_plus_messaging import geo_event_visible_in_private_plu
 from app.services.message_feature_service import (
     GeoMessageSkipped,
     PrivateScopeRecipientError,
+    SelectedZoneNotContainingError,
     SensorRateLimitError,
     UnknownRateLimitError,
 )
@@ -114,6 +116,14 @@ def _handle_geo_propagation_errors(exc: Exception) -> None:
             detail={
                 "error_code": "INVALID_PRIVATE_RECIPIENT",
                 "message": str(exc) or "PRIVATE receiver must be in your zone or account.",
+            },
+        ) from exc
+    if isinstance(exc, SelectedZoneNotContainingError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "SELECTED_ZONE_NOT_CONTAINING",
+                "message": str(exc) or "You are not currently inside the selected zone.",
             },
         ) from exc
     if isinstance(exc, ServicePaValidationError):
@@ -229,6 +239,11 @@ async def search_members_for_private(
     latitude: float | None = Query(default=None, ge=-90, le=90),
     longitude: float | None = Query(default=None, ge=-180, le=180),
     limit: int = Query(default=20, ge=1, le=50),
+    zone_record_id: int | None = Query(
+        default=None,
+        ge=1,
+        description="Limit search to one overlapping acceptable-zone geometry (``zones.id``).",
+    ),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -242,6 +257,75 @@ async def search_members_for_private(
         latitude=latitude,
         longitude=longitude,
         limit=limit,
+        target_zone_record_id=zone_record_id,
+    )
+
+
+@router.get(
+    "/compose/zones",
+    summary="List overlapping acceptable zones at the sender's location",
+    description=(
+        "Returns every acceptable-zone geometry that contains the caller's evaluation "
+        "point. Used by compose to offer a zone picker when the sender is in more than "
+        "one zone. Pass **`latitude`/`longitude`** for a live fix; otherwise the latest "
+        "stored member location is used."
+    ),
+)
+async def list_compose_zones(
+    latitude: float | None = Query(default=None, ge=-90, le=90),
+    longitude: float | None = Query(default=None, ge=-180, le=180),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    me = owner_crud.get_owner(db, current_user["user_id"])
+    if not me:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Owner not found")
+    return message_feature_service.list_compose_zones_at_location(
+        db,
+        me,
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+
+@router.get(
+    "/compose/recipients",
+    summary="Preview recipients for one selected overlapping zone",
+    description=(
+        "When compose targets a single overlapping zone (``zone_record_id``), returns "
+        "the members who would receive that message type under primary/secondary routing."
+    ),
+)
+async def preview_compose_recipients(
+    zone_record_id: int = Query(..., ge=1, description="Selected ``zones.id`` geometry."),
+    type: MessageFeatureType = Query(  # noqa: A002 - matches propagate payload field
+        default=MessageFeatureType.PA,
+        description="Message type whose routing rules apply to the preview.",
+    ),
+    q: str = Query(default="", max_length=120, description="Optional name or email fragment."),
+    latitude: float | None = Query(default=None, ge=-90, le=90),
+    longitude: float | None = Query(default=None, ge=-180, le=180),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    me = owner_crud.get_owner(db, current_user["user_id"])
+    if not me:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Owner not found")
+    try:
+        canonical = normalize_message_type(type.value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error_code": "UNSUPPORTED_MESSAGE_TYPE", "message": str(exc)},
+        ) from exc
+    return message_feature_service.preview_compose_recipients(
+        db,
+        me,
+        message_type=canonical,
+        latitude=latitude,
+        longitude=longitude,
+        target_zone_record_id=zone_record_id,
+        query=q,
     )
 
 

@@ -62,16 +62,34 @@ def _extract_geojson_polygon(geometry: object) -> dict | None:
     return None
 
 
-def _serialize_zone(zone: Zone) -> dict:
+def _owner_display_name(owner: Owner | None) -> str | None:
+    if owner is None:
+        return None
+    label = (owner.message_display_name or "").strip()
+    return label or None
+
+
+def _serialize_zone(
+    zone: Zone,
+    *,
+    owners_by_id: dict[int, Owner] | None = None,
+) -> dict:
     contract_type = (zone.parameters or {}).get("contractType")
     config = dict((zone.parameters or {}).get("config", {}) or {})
     # Always source h3 cells from canonical DB column.
     config["h3Cells"] = list(zone.h3_cells or [])
+    preferred_id = (
+        int(zone.creator_id) if zone.creator_id is not None else int(zone.owner_id)
+    )
+    owner_name = None
+    if owners_by_id is not None:
+        owner_name = _owner_display_name(owners_by_id.get(preferred_id))
     return {
         "id": zone.id,
         "zone_id": zone.zone_id,
         "owner_id": zone.owner_id,
         "creator_id": zone.creator_id,
+        "owner_name": owner_name,
         "name": zone.name,
         "type": contract_type or MODEL_TO_CONTRACT_ZONE_TYPE.get(zone.zone_type, "dynamic"),
         "geometry": (zone.parameters or {}).get("geometry", {}),
@@ -121,7 +139,7 @@ def create_zone(db: Session, owner: Owner, payload: dict) -> dict:
     db.add(zone)
     db.flush()
     db.refresh(zone)
-    return _serialize_zone(zone)
+    return _serialize_zone(zone, owners_by_id={int(owner.id): owner})
 
 
 def list_zones(db: Session, owner: Owner) -> list[dict]:
@@ -131,7 +149,16 @@ def list_zones(db: Session, owner: Owner) -> list[dict]:
         .filter(Zone.owner_id.in_(owner_ids), Zone.active.is_(True))
         .all()
     )
-    return [_serialize_zone(zone) for zone in zones]
+    lookup_ids: set[int] = set()
+    for zone in zones:
+        lookup_ids.add(int(zone.owner_id))
+        if zone.creator_id is not None:
+            lookup_ids.add(int(zone.creator_id))
+    owners: dict[int, Owner] = {}
+    if lookup_ids:
+        rows = db.query(Owner).filter(Owner.id.in_(tuple(lookup_ids))).all()
+        owners = {int(row.id): row for row in rows}
+    return [_serialize_zone(zone, owners_by_id=owners) for zone in zones]
 
 
 def update_zone(db: Session, owner: Owner, zone_id: str, payload: dict) -> dict:
@@ -171,7 +198,12 @@ def update_zone(db: Session, owner: Owner, zone_id: str, payload: dict) -> dict:
         params["contractType"] = payload["type"]
     zone.parameters = params
     db.flush()
-    return _serialize_zone(zone)
+    preferred_id = (
+        int(zone.creator_id) if zone.creator_id is not None else int(zone.owner_id)
+    )
+    named = db.query(Owner).filter(Owner.id == preferred_id).first()
+    owners = {preferred_id: named} if named is not None else {}
+    return _serialize_zone(zone, owners_by_id=owners)
 
 
 def delete_zone(db: Session, owner: Owner, zone_id: str) -> None:

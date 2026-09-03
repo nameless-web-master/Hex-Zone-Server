@@ -45,6 +45,7 @@ from app.services.network_zone_propagation import (
     resolve_network_administrator,
     resolve_network_geo_propagation_recipients,
     expand_primary_zone_gps_alert_recipients,
+    list_matched_compose_zones,
 )
 from app.services.private_plus_messaging import (
     apply_private_plus_network_shared_recipients,
@@ -94,6 +95,7 @@ def sanitize_msg_images(msg: dict) -> dict:
 
 PRIVATE_SEARCH_MIN_QUERY_LEN = 2
 PRIVATE_SEARCH_MAX_RESULTS = 20
+COMPOSE_RECIPIENT_PREVIEW_MAX = 50
 
 REGISTERED_ADDRESS_GEO_TYPES: frozenset[CanonicalMessageType] = frozenset(
     {
@@ -113,6 +115,10 @@ class SensorRateLimitError(Exception):
 
 class PrivateScopeRecipientError(ValueError):
     """Raised when a PRIVATE receiver is not reachable for the sender's zone context."""
+
+
+class SelectedZoneNotContainingError(ValueError):
+    """Raised when ``zone_record_id`` does not contain the sender's evaluation point."""
 
 
 class GeoMessageSkipped(Exception):
@@ -246,10 +252,14 @@ def resolve_geo_propagation_recipient_owner_ids(
     exclude_owner_id: int | None = None,
     sender: Owner | None = None,
     network_zone_id: str | None = None,
+    target_zone_record_id: int | None = None,
 ) -> tuple[list[str], list[int], list[int], dict]:
     """Resolve geo alarm/alert recipients from acceptable-zone rules."""
     if sender is None:
         zone_record_ids = evaluate_zone_records_containing_point(db, float(latitude), float(longitude))
+        if target_zone_record_id is not None:
+            selected_id = int(target_zone_record_id)
+            zone_record_ids = [rid for rid in zone_record_ids if int(rid) == selected_id]
         zone_ids = zone_ids_for_zone_records(db, zone_record_ids)
         return zone_ids, zone_record_ids, [], {
             "strategy": "network_no_acceptable_zone",
@@ -265,6 +275,7 @@ def resolve_geo_propagation_recipient_owner_ids(
         longitude=float(longitude),
         exclude_owner_id=exclude_owner_id,
         network_zone_id=network_zone_id,
+        target_zone_record_id=target_zone_record_id,
     )
 
 
@@ -277,6 +288,7 @@ def _assert_private_receiver_reachable(
     longitude: float,
     sender_zone_record_ids: list[int],
     network_zone_id: str | None = None,
+    target_zone_record_id: int | None = None,
 ) -> None:
     """PRIVATE: sender must be inside a zone; receiver must be in the PANIC/PA pool."""
     receiver = db.get(Owner, receiver_owner_id)
@@ -301,6 +313,7 @@ def _assert_private_receiver_reachable(
         exclude_owner_id=None,
         sender=sender,
         network_zone_id=network_zone_id,
+        target_zone_record_id=target_zone_record_id,
     )
     if is_private_plus_network_account(db, sender):
         pool = sorted(
@@ -326,6 +339,7 @@ def _resolve_private_location_status(
     latitude: float | None,
     longitude: float | None,
     network_zone_id: str | None = None,
+    target_zone_record_id: int | None = None,
 ) -> str:
     """Location gate for PRIVATE compose: coordinates, then acceptable-zone geometry."""
     if latitude is None or longitude is None:
@@ -337,6 +351,7 @@ def _resolve_private_location_status(
         exclude_owner_id=sender.id,
         sender=sender,
         network_zone_id=network_zone_id,
+        target_zone_record_id=target_zone_record_id,
     )
     if not zone_record_ids:
         return "outside_zone"
@@ -349,12 +364,13 @@ def _private_search_members(
     query: str,
     *,
     limit: int = PRIVATE_SEARCH_MAX_RESULTS,
+    max_cap: int = PRIVATE_SEARCH_MAX_RESULTS,
 ) -> list[dict]:
     q = (query or "").strip()
     if not candidate_ids:
         return []
 
-    cap = max(1, min(int(limit), PRIVATE_SEARCH_MAX_RESULTS))
+    cap = max(1, min(int(limit), int(max_cap)))
     query_builder = (
         db.query(Owner)
         .filter(
@@ -404,6 +420,7 @@ def search_private_message_recipients(
     latitude: float | None = None,
     longitude: float | None = None,
     limit: int = PRIVATE_SEARCH_MAX_RESULTS,
+    target_zone_record_id: int | None = None,
 ) -> dict:
     """Search network members by name or email for PRIVATE compose (invited members only)."""
     live = get_owner_live_coordinates(db, sender.id)
@@ -414,6 +431,7 @@ def search_private_message_recipients(
         sender,
         latitude=lat,
         longitude=lon,
+        target_zone_record_id=target_zone_record_id,
     )
     if location_status != "inside_zone":
         return {"zone_ids": [], "members": [], "location_status": location_status}
@@ -424,6 +442,7 @@ def search_private_message_recipients(
         longitude=float(lon),
         exclude_owner_id=sender.id,
         sender=sender,
+        target_zone_record_id=target_zone_record_id,
     )
     if is_private_plus_network_account(db, sender):
         candidate_ids = sorted(
@@ -519,6 +538,9 @@ def _zone_based_recipients(
     eval_lat, eval_lon, geo_source = _geo_evaluation_coordinates(
         db, sender, payload, canonical_type
     )
+    target_zone_record_id = (
+        int(payload.zone_record_id) if payload.zone_record_id is not None else None
+    )
     sender_zone_ids, sender_zone_record_ids, recipient_owner_ids, zone_meta = (
         resolve_geo_propagation_recipient_owner_ids(
             db,
@@ -527,8 +549,15 @@ def _zone_based_recipients(
             exclude_owner_id=sender.id if exclude_sender_from_recipients else None,
             sender=sender,
             network_zone_id=network_zone_id,
+            target_zone_record_id=target_zone_record_id,
         )
     )
+    if target_zone_record_id is not None and target_zone_record_id not in {
+        int(rid) for rid in sender_zone_record_ids
+    }:
+        raise SelectedZoneNotContainingError(
+            "You are not currently inside the selected zone."
+        )
     zone_meta = {**zone_meta, "geo_evaluation_source": geo_source}
 
     recipient_owner_ids, zone_meta = apply_private_plus_network_shared_recipients(
@@ -560,6 +589,7 @@ def _zone_based_recipients(
             longitude=eval_lon,
             sender_zone_record_ids=sender_zone_record_ids,
             network_zone_id=network_zone_id,
+            target_zone_record_id=target_zone_record_id,
         )
         return (
             sender_zone_ids,
@@ -571,6 +601,109 @@ def _zone_based_recipients(
         )
 
     return sender_zone_ids, recipient_owner_ids, zone_meta
+
+
+def list_compose_zones_at_location(
+    db: Session,
+    sender: Owner,
+    *,
+    latitude: float | None,
+    longitude: float | None,
+    network_zone_id: str | None = None,
+) -> dict:
+    """Overlapping acceptable zones at the compose evaluation point."""
+    live = get_owner_live_coordinates(db, sender.id)
+    lat = latitude if latitude is not None else (live[0] if live else None)
+    lon = longitude if longitude is not None else (live[1] if live else None)
+    if lat is None or lon is None:
+        return {"location_status": "no_coordinates", "zones": []}
+    zones = list_matched_compose_zones(
+        db,
+        latitude=float(lat),
+        longitude=float(lon),
+        network_zone_id=network_zone_id,
+    )
+    return {
+        "location_status": "inside_zone" if zones else "outside_zone",
+        "zones": zones,
+    }
+
+
+def preview_compose_recipients(
+    db: Session,
+    sender: Owner,
+    *,
+    message_type: CanonicalMessageType,
+    latitude: float | None,
+    longitude: float | None,
+    target_zone_record_id: int,
+    query: str = "",
+    network_zone_id: str | None = None,
+) -> dict:
+    """Who would receive a geo message if the sender targets one overlapping zone."""
+    live = get_owner_live_coordinates(db, sender.id)
+    lat = latitude if latitude is not None else (live[0] if live else None)
+    lon = longitude if longitude is not None else (live[1] if live else None)
+    if lat is None or lon is None:
+        return {
+            "zone_ids": [],
+            "zone_record_id": int(target_zone_record_id),
+            "members": [],
+            "location_status": "no_coordinates",
+            "strategy": None,
+        }
+
+    selected_id = int(target_zone_record_id)
+    zone_ids, zone_record_ids, recipient_owner_ids, zone_meta = (
+        resolve_geo_propagation_recipient_owner_ids(
+            db,
+            latitude=float(lat),
+            longitude=float(lon),
+            exclude_owner_id=sender.id,
+            sender=sender,
+            network_zone_id=network_zone_id,
+            target_zone_record_id=selected_id,
+        )
+    )
+    if selected_id not in {int(rid) for rid in zone_record_ids}:
+        return {
+            "zone_ids": [],
+            "zone_record_id": selected_id,
+            "members": [],
+            "location_status": "outside_zone",
+            "strategy": zone_meta.get("strategy"),
+        }
+
+    recipient_owner_ids, zone_meta = apply_private_plus_network_shared_recipients(
+        db,
+        sender=sender,
+        message_type=message_type,
+        sender_zone_record_ids=zone_record_ids,
+        recipient_owner_ids=recipient_owner_ids,
+        zone_meta=zone_meta,
+        exclude_sender_id=sender.id,
+    )
+    recipient_owner_ids, zone_meta = expand_primary_zone_gps_alert_recipients(
+        db,
+        message_type=message_type,
+        recipient_owner_ids=recipient_owner_ids,
+        zone_meta=zone_meta,
+        exclude_sender_id=sender.id,
+    )
+    members = _private_search_members(
+        db,
+        recipient_owner_ids,
+        query,
+        limit=COMPOSE_RECIPIENT_PREVIEW_MAX,
+        max_cap=COMPOSE_RECIPIENT_PREVIEW_MAX,
+    )
+    return {
+        "zone_ids": zone_ids,
+        "zone_record_id": selected_id,
+        "members": members,
+        "location_status": "inside_zone",
+        "strategy": zone_meta.get("strategy"),
+    }
 
 
 def _log_emergency_event(
